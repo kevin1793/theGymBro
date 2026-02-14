@@ -1,98 +1,252 @@
-import { Image } from 'expo-image';
-import { Platform, StyleSheet } from 'react-native';
+import QuoteBanner from '@/components/QuoteBanner';
+import ProgressTracker from '@/components/WeeklyTracker';
+import { useRouter } from 'expo-router';
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { HelloWave } from '@/components/hello-wave';
-import ParallaxScrollView from '@/components/parallax-scroll-view';
-import { ThemedText } from '@/components/themed-text';
-import { ThemedView } from '@/components/themed-view';
-import { Link } from 'expo-router';
 
-export default function HomeScreen() {
+type Goal = {
+  id: number;
+  title: string;
+  exercise: string;
+  startingWeight: number;
+  goalWeight: number;
+  currentWeight: number;
+};
+
+type Workout = {
+  id: number;
+  title: string;
+  description: string;
+};
+
+export default function Home() {
+  const router = useRouter();
+
+  // Demo data with startingWeight
+  const goals: Goal[] = [
+    { id: 1, title: 'Bench Press PR', exercise: 'Bench Press', startingWeight: 225, currentWeight: 275, goalWeight: 315 },
+    { id: 2, title: 'Deadlift PR', exercise: 'Deadlift', startingWeight: 365, currentWeight: 405, goalWeight: 455 },
+    { id: 3, title: 'Squat PR', exercise: 'Squat', startingWeight: 285, currentWeight: 325, goalWeight: 365 },
+  ];
+
+  const workouts: Workout[] = [
+    { id: 1, title: 'Heavy Triples', description: 'Bench + Deadlifts' },
+    { id: 2, title: 'Leg Day', description: 'Squats + Lunges + Calves' },
+    { id: 3, title: 'Leg Day', description: 'Squats + Lunges + Calves' },
+  ];
+
+  function getGreeting() {
+    const hour = new Date().getHours();
+
+    if (hour < 12) return 'Good Morning';
+    if (hour < 18) return 'Good Afternoon';
+    return 'Good Evening';
+  }
+
   return (
-    <ParallaxScrollView
-      headerBackgroundColor={{ light: '#A1CEDC', dark: '#1D3D47' }}
-      headerImage={
-        <Image
-          source={require('@/assets/images/partial-react-logo.png')}
-          style={styles.reactLogo}
-        />
-      }>
-      <ThemedView style={styles.titleContainer}>
-        <ThemedText type="title">Welcome!</ThemedText>
-        <HelloWave />
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <ThemedText type="subtitle">Step 1: Try it</ThemedText>
-        <ThemedText>
-          Edit <ThemedText type="defaultSemiBold">app/(tabs)/index.tsx</ThemedText> to see changes.
-          Press{' '}
-          <ThemedText type="defaultSemiBold">
-            {Platform.select({
-              ios: 'cmd + d',
-              android: 'cmd + m',
-              web: 'F12',
-            })}
-          </ThemedText>{' '}
-          to open developer tools.
-        </ThemedText>
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <Link href="/modal">
-          <Link.Trigger>
-            <ThemedText type="subtitle">Step 2: Explore</ThemedText>
-          </Link.Trigger>
-          <Link.Preview />
-          <Link.Menu>
-            <Link.MenuAction title="Action" icon="cube" onPress={() => alert('Action pressed')} />
-            <Link.MenuAction
-              title="Share"
-              icon="square.and.arrow.up"
-              onPress={() => alert('Share pressed')}
-            />
-            <Link.Menu title="More" icon="ellipsis">
-              <Link.MenuAction
-                title="Delete"
-                icon="trash"
-                destructive
-                onPress={() => alert('Delete pressed')}
-              />
-            </Link.Menu>
-          </Link.Menu>
-        </Link>
+    <SafeAreaView style={styles.safeArea}>
+      <ScrollView style={styles.container} contentContainerStyle={{ padding: 20 }}>
+        {/* <Text style={styles.header}>Dashboard</Text> */}
+        <Text style={styles.header}>{getGreeting()}</Text>
+        <QuoteBanner/>
 
-        <ThemedText>
-          {`Tap the Explore tab to learn more about what's included in this starter app.`}
-        </ThemedText>
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <ThemedText type="subtitle">Step 3: Get a fresh start</ThemedText>
-        <ThemedText>
-          {`When you're ready, run `}
-          <ThemedText type="defaultSemiBold">npm run reset-project</ThemedText> to get a fresh{' '}
-          <ThemedText type="defaultSemiBold">app</ThemedText> directory. This will move the current{' '}
-          <ThemedText type="defaultSemiBold">app</ThemedText> to{' '}
-          <ThemedText type="defaultSemiBold">app-example</ThemedText>.
-        </ThemedText>
-      </ThemedView>
-    </ParallaxScrollView>
+        <ProgressTracker/>
+        {/* Goals Section */}
+        <View style={styles.sectionHeader}>
+          <Text style={styles.sectionTitle}>Goals</Text>
+          <Pressable
+            style={styles.plusButton}
+            onPress={() => router.push('/goals/create')}
+          >
+            <Text style={styles.plusText}>+</Text>
+          </Pressable>
+        </View>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 30 }}>
+          {goals.map((goal) => {
+            // Calculate progress based on starting weight
+            const totalGain = goal.goalWeight - goal.startingWeight;
+            const gained = goal.currentWeight - goal.startingWeight;
+            const progressPercent = Math.min((gained / totalGain) * 100, 100);
+
+            return (
+              <Pressable
+        key={goal.id}
+        style={styles.card}
+        onPress={() => router.push('/goals/view')}
+      >
+        <Text style={styles.cardTitle}>{goal.title}</Text>
+        <Text style={styles.cardDescription}>Exercise: {goal.exercise}</Text>
+
+        {/* Updated Weights Row */}
+        <View style={styles.weightsRow}>
+          <View style={styles.weightColumn}>
+            <Text style={styles.weightLabel}>Starting</Text>
+            <Text style={styles.weightValue}>{goal.startingWeight} lbs</Text>
+          </View>
+          <View style={styles.weightColumn}>
+            <Text style={styles.weightLabel}>Current</Text>
+            <Text style={styles.weightValue}>{goal.currentWeight} lbs</Text>
+          </View>
+          <View style={styles.weightColumn}>
+            <Text style={styles.weightLabel}>Goal</Text>
+            <Text style={styles.weightValue}>{goal.goalWeight} lbs</Text>
+          </View>
+        </View>
+
+        {/* Progress bar row with percent */}
+        <View style={styles.progressRow}>
+          <View style={styles.progressBar}>
+            <View style={[styles.progressFill, { width: `${progressPercent}%` }]} />
+          </View>
+          <Text style={styles.progressText}>{progressPercent.toFixed(0)}%</Text>
+        </View>
+      </Pressable>
+            );
+          })}
+        </ScrollView>
+
+        {/* Workouts Section */}
+        <View style={styles.sectionHeader}>
+          <Text style={styles.sectionTitle}>Workouts</Text>
+          <Pressable
+            style={styles.plusButton}
+            onPress={() => router.push('/workouts/create')}
+          >
+            <Text style={styles.plusText}>+</Text>
+          </Pressable>
+        </View>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+          {workouts.map((workout) => (
+            <Pressable
+              key={workout.id}
+              style={styles.card}
+              onPress={() => router.push('/workouts/view')}
+            >
+              <Text style={styles.cardTitle}>{workout.title}</Text>
+              <Text style={styles.cardDescription}>{workout.description}</Text>
+            </Pressable>
+          ))}
+        </ScrollView>
+      </ScrollView>
+    </SafeAreaView>
+    
   );
 }
 
 const styles = StyleSheet.create({
-  titleContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
+  safeArea: {
+    flex: 1,
+    backgroundColor: '#121212',
   },
-  stepContainer: {
-    gap: 8,
+  weightsRow: {
+  flexDirection: 'row',
+  justifyContent: 'space-between',
+  marginBottom: 8,
+},
+weightColumn: {
+  alignItems: 'center',
+},
+weightLabel: {
+  fontSize: 10,
+  color: '#aaa',
+  marginBottom: 2,
+  fontWeight: '500',
+},
+weightValue: {
+  fontSize: 12,
+  color: '#fff',
+  fontWeight: '600',
+},
+
+  container: {
+    flex: 1,
+    backgroundColor: '#121212',
+  },
+  header: {
+    fontSize: 25,
+    fontWeight: 'bold',
+    marginBottom: 20,
+    marginTop: 0,
+    color: '#fff',
+  },
+  sectionHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 10,
+  },
+  sectionTitle: {
+    fontSize: 22,
+    fontWeight: '600',
+    color: '#fff',
+  },
+  plusButton: {
+    width: 32,
+    height: 32,
+    borderRadius: 25,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  plusText: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#fff',
+  },
+  card: {
+    backgroundColor: '#1f1f1f',
+    width: 220,
+    borderRadius: 16,
+    padding: 20,
+    marginRight: 15,
+    shadowColor: '#000',
+    shadowOpacity: 0.3,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 5 },
+    elevation: 5,
+  },
+  cardTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#fff',
     marginBottom: 8,
   },
-  reactLogo: {
-    height: 178,
-    width: 290,
-    bottom: 0,
-    left: 0,
-    position: 'absolute',
+  cardDescription: {
+    fontSize: 14,
+    color: '#aaa',
+    marginBottom: 10,
+  },
+  weights: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 8,
+  },
+  weightText: {
+    color: '#fff',
+    fontSize: 12,
+  },
+  progressRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: 4,
+  },
+  progressBar: {
+    flex: 1,
+    height: 6,
+    backgroundColor: '#333',
+    borderRadius: 3,
+    overflow: 'hidden',
+    marginRight: 8,
+  },
+  progressFill: {
+    height: '100%',
+    backgroundColor: '#4ade80',
+  },
+  progressText: {
+    color: '#fff',
+    fontSize: 12,
+    width: 40,
+    textAlign: 'right',
   },
 });
