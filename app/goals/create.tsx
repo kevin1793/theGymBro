@@ -1,5 +1,8 @@
 import { exercises } from '@/data/exercises';
+import { auth, db } from '@/lib/firebase';
+import { Ionicons } from '@expo/vector-icons';
 import { Stack, useRouter } from 'expo-router';
+import { addDoc, collection, serverTimestamp } from 'firebase/firestore';
 import React, { useState } from 'react';
 import {
   FlatList,
@@ -9,23 +12,27 @@ import {
   StyleSheet,
   Text,
   TextInput,
-  View,
+  View
 } from 'react-native';
 import DropDownPicker from 'react-native-dropdown-picker';
+import { useGoals } from '../context/GoalsContext';
 
 export default function CreateGoal() {
   const router = useRouter();
+  const { addOrUpdateGoal } = useGoals(); // ✅ use context function
 
-  // General fields
+  const userWeightUnit: 'kg' | 'lbs' = 'lbs';
+  const userDistanceUnit: 'km' | 'miles' = 'miles';
+
   const [title, setTitle] = useState('');
-  const [exercise, setExercise] = useState(null);
+  const [exercise, setExercise] = useState<string | null>(null);
+
   const [open, setOpen] = useState(false);
   const [items, setItems] = useState(
     exercises.map((ex) => ({ label: ex.name, value: ex.name }))
   );
 
-  // Goal Type dropdown
-  const [goalType, setGoalType] = useState(null);
+  const [goalType, setGoalType] = useState<string | null>(null);
   const [goalTypeOpen, setGoalTypeOpen] = useState(false);
 
   const goalTypeOptions = [
@@ -33,58 +40,104 @@ export default function CreateGoal() {
     { label: 'Max Reps', value: 'max_reps' },
     { label: 'Time', value: 'time' },
     { label: 'Distance', value: 'distance' },
-    { label: 'Calories Burned', value: 'calories' },
   ];
 
-  // Fields depending on goal type
-  const [startingWeight, setStartingWeight] = useState('');
-  const [goalWeight, setGoalWeight] = useState('');
-  const [startingDistance, setStartingDistance] = useState('');
-  const [currentDistance, setCurrentDistance] = useState('');
-  const [goalDistance, setGoalDistance] = useState('');
-  const [startingTime, setStartingTime] = useState('');
-  const [goalTime, setGoalTime] = useState('');
+  const [startValue, setStartValue] = useState('');
+  const [currentValue, setCurrentValue] = useState('');
+  const [targetValue, setTargetValue] = useState('');
+  const [secondaryValue, setSecondaryValue] = useState('');
 
-  const [weight, setWeight] = useState('');
-const [startingReps, setStartingReps] = useState('');
-const [currentReps, setCurrentReps] = useState('');
-const [goalReps, setGoalReps] = useState('');
+  const [startMinutes, setStartMinutes] = useState(0);
+  const [startSeconds, setStartSeconds] = useState(0);
+  const [currentMinutes, setCurrentMinutes] = useState(0);
+  const [currentSeconds, setCurrentSeconds] = useState(0);
+  const [targetMinutes, setTargetMinutes] = useState(0);
+  const [targetSeconds, setTargetSeconds] = useState(0);
 
-  const handleSave = () => {
+
+  const getMeasurementLabel = () => {
+    switch (goalType) {
+      case '1rep': return userWeightUnit;
+      case 'max_reps': return 'reps';
+      case 'distance': return userDistanceUnit;
+      case 'time': return 'seconds';
+      default: return '';
+    }
+  };
+
+  const requiresSecondaryWeight = goalType === 'max_reps';
+
+  const handleSave = async () => {
+  try {
+    const user = auth.currentUser;
+    if (!user) return console.log('User not logged in');
+
+    // Convert time inputs to total seconds
+    const convertToSeconds = (min: string, sec: string) =>
+      Number(min) * 60 + Number(sec);
+
     const goalData = {
       title,
       exercise,
       goalType,
-      // Include fields based on goal type
-      ...(goalType === '1rep' || goalType === 'max_reps'
-        ? { startingWeight, goalWeight }
-        : {}),
-      ...(goalType === 'distance'
-        ? { startingDistance, currentDistance, goalDistance }
-        : {}),
-      ...(goalType === 'time' ? { startingTime, goalTime } : {}),
+      measurementType:
+        goalType === '1rep' ? 'weight' :
+        goalType === 'max_reps' ? 'reps' : goalType,
+      unit:
+        goalType === '1rep' ? userWeightUnit :
+        goalType === 'max_reps' ? 'reps' :
+        goalType === 'distance' ? 'km' : 'seconds',
+      startValue: goalType === 'time' ? convertToSeconds(startMinutes, startSeconds) : Number(startValue),
+      currentValue: goalType === 'time' ? convertToSeconds(currentMinutes, currentSeconds) : Number(currentValue),
+      targetValue: goalType === 'time' ? convertToSeconds(targetMinutes, targetSeconds) : Number(targetValue),
+      secondaryValue:
+        requiresSecondaryWeight && secondaryValue ? Number(secondaryValue) : null,
+      secondaryUnit: requiresSecondaryWeight ? userWeightUnit : null,
+      createdAt: serverTimestamp(),
     };
 
-    console.log(goalData);
-    router.back();
+    const docRef = await addDoc(
+      collection(db, 'users', user.uid, 'goals'),
+      goalData
+    );
+
+    addOrUpdateGoal({ id: docRef.id, ...goalData });
+    router.replace('/(tabs)');
+  } catch (error) {
+    console.log('Error saving goal:', error);
+  }
   };
+
 
   return (
     <KeyboardAvoidingView
       style={{ flex: 1, backgroundColor: '#121212' }}
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
-      <>
-        <Stack.Screen
-          options={{
-            title: 'Create Goal',
-            headerBackTitleVisible: false,
-            headerTintColor: '#fff',
-            headerBackTitle: 'Back',
-            headerStyle: { backgroundColor: '#121212' },
-          }}
-        />
-      </>
+      <Stack.Screen
+        options={{
+          headerLeft: () => (
+            <Pressable
+              onPress={() => {
+                if (router.canGoBack()) {
+                  router.back(); // normal push stack
+                } else {
+                  router.push('/'); // fallback if JS stack is empty
+                }
+              }}
+              style={{ paddingHorizontal: 16 }}
+            >
+              <Ionicons name="chevron-back" size={24} color="#fff" />
+            </Pressable>
+          ),
+          title: '',
+          headerBackTitle: '',
+          headerBackTitleVisible: false,
+          headerTintColor: '#fff',
+          headerStyle: { backgroundColor: '#121212' },
+        }}
+      />
+
       <FlatList
         data={[{ key: 'form' }]}
         keyExtractor={(item) => item.key}
@@ -93,50 +146,35 @@ const [goalReps, setGoalReps] = useState('');
           <>
             <Text style={styles.header}>Create New Goal</Text>
 
-            {/* Title */}
             <Text style={styles.label}>Title</Text>
             <TextInput
               style={styles.input}
-              placeholder="Ex: 1 Rep Max"
+              placeholder="Ex: Bench Press Goal"
               placeholderTextColor="#777"
               value={title}
               onChangeText={setTitle}
             />
 
-            {/* Exercise */}
             <Text style={styles.label}>Exercise</Text>
-            <View style={{ zIndex: 1000 }}>
-              <DropDownPicker
-                open={open}
-                value={exercise}
-                items={items}
-                setOpen={setOpen}
-                setValue={setExercise}
-                setItems={setItems}
-                placeholder="Search or select an exercise..."
-                searchable
-                searchPlaceholder="Type to search..."
-                listMode="MODAL"
-                closeIconStyle={{ tintColor: '#fff' }}
-                modalProps={{ animationType: 'slide' }}
-                modalContentContainerStyle={{ backgroundColor: '#121212' }}
-                searchTextInputStyle={{
-                  color: '#fff',
-                  borderWidth: 1,
-                  borderColor: '#4CAF50',
-                  borderRadius: 8,
-                  paddingHorizontal: 10,
-                  paddingVertical: 8,
-                  backgroundColor: '#121212',
-                }}
-                style={styles.dropdown}
-                dropDownContainerStyle={styles.dropdownContainer}
-                textStyle={{ color: '#fff', fontSize: 16 }}
-                placeholderStyle={{ color: '#777' }}
-              />
-            </View>
+            <DropDownPicker
+              open={open}
+              value={exercise}
+              items={items}
+              setOpen={setOpen}
+              setValue={setExercise}
+              setItems={setItems}
+              placeholder="Search or select an exercise..."
+              searchable
+              listMode="MODAL"
+              modalProps={{ animationType: 'slide', presentationStyle: 'fullScreen' }}
+              modalContentContainerStyle={{ flex: 1, backgroundColor: '#121212', paddingTop: 60 }}
+              closeIconStyle={{ tintColor: '#fff' }}
+              style={styles.dropdown}
+              dropDownContainerStyle={styles.dropdownContainer}
+              textStyle={{ color: '#fff', fontSize: 16 }}
+              placeholderStyle={{ color: '#777' }}
+            />
 
-            {/* Goal Type */}
             <Text style={styles.label}>Goal Type</Text>
             <DropDownPicker
               open={goalTypeOpen}
@@ -151,137 +189,129 @@ const [goalReps, setGoalReps] = useState('');
               placeholderStyle={{ color: '#777' }}
             />
 
-            {/* Conditional fields based on goal type */}
-              {goalType === '1rep' && (
-                <>
-                  <Text style={styles.label}>Starting Weight</Text>
-                  <TextInput
-                    style={styles.input}
-                    placeholder="Ex: 200"
-                    placeholderTextColor="#777"
-                    value={startingWeight}
-                    onChangeText={setStartingWeight}
-                    keyboardType="numeric"
-                  />
+            {goalType !== 'time' &&
+             (
+              <>
+                {requiresSecondaryWeight && (
+                  <>
+                    <Text style={styles.label}>Weight ({userWeightUnit})</Text>
+                    <TextInput
+                      style={styles.input}
+                      placeholder={`Ex: 100 ${userWeightUnit}`}
+                      placeholderTextColor="#777"
+                      value={secondaryValue}
+                      onChangeText={setSecondaryValue}
+                      keyboardType="numeric"
+                    />
+                  </>
+                )}
 
-                  <Text style={styles.label}>Goal Weight</Text>
-                  <TextInput
-                    style={styles.input}
-                    placeholder="Ex: 315"
-                    placeholderTextColor="#777"
-                    value={goalWeight}
-                    onChangeText={setGoalWeight}
-                    keyboardType="numeric"
-                  />
-                </>
-              )}
+                <Text style={styles.label}>Starting {getMeasurementLabel()}</Text>
+                <TextInput
+                  style={styles.input}
+                  placeholder={`Enter starting ${getMeasurementLabel()}`}
+                  placeholderTextColor="#777"
+                  value={startValue}
+                  onChangeText={setStartValue}
+                  keyboardType="numeric"
+                />
 
-              {goalType === 'max_reps' && (
-                <>
-                  <Text style={styles.label}>Weight</Text>
-                  <TextInput
-                    style={styles.input}
-                    placeholder="Ex: 100"
-                    placeholderTextColor="#777"
-                    value={weight}
-                    onChangeText={setWeight}
-                    keyboardType="numeric"
-                  />
+                <Text style={styles.label}>Current {getMeasurementLabel()}</Text>
+                <TextInput
+                  style={styles.input}
+                  placeholder={`Enter current ${getMeasurementLabel()}`}
+                  placeholderTextColor="#777"
+                  value={currentValue}
+                  onChangeText={setCurrentValue}
+                  keyboardType="numeric"
+                />
 
-                  <Text style={styles.label}>Starting Reps</Text>
-                  <TextInput
-                    style={styles.input}
-                    placeholder="Ex: 5"
-                    placeholderTextColor="#777"
-                    value={startingReps}
-                    onChangeText={setStartingReps}
-                    keyboardType="numeric"
-                  />
+                <Text style={styles.label}>Goal {getMeasurementLabel()}</Text>
+                <TextInput
+                  style={styles.input}
+                  placeholder={`Enter goal ${getMeasurementLabel()}`}
+                  placeholderTextColor="#777"
+                  value={targetValue}
+                  onChangeText={setTargetValue}
+                  keyboardType="numeric"
+                />
+              </>
+            )}
 
-                  <Text style={styles.label}>Current Reps</Text>
-                  <TextInput
-                    style={styles.input}
-                    placeholder="Ex: 8"
-                    placeholderTextColor="#777"
-                    value={currentReps}
-                    onChangeText={setCurrentReps}
-                    keyboardType="numeric"
-                  />
+            {goalType === 'time' ? (
+            <>
+            <Text style={styles.label}>Starting Time</Text>
+            <View style={styles.timeRow}>
+              <TextInput
+                style={[styles.input, styles.timeInput]}
+                placeholder="Min"
+                placeholderTextColor="#777"
+                value={startMinutes}
+                onChangeText={setStartMinutes}
+                keyboardType="numeric"
+              />
+              <Text style={styles.timeSeparator}>:</Text>
+              <TextInput
+                style={[styles.input, styles.timeInput]}
+                placeholder="Sec"
+                placeholderTextColor="#777"
+                value={startSeconds}
+                onChangeText={setStartSeconds}
+                keyboardType="numeric"
+              />
+            </View>
 
-                  <Text style={styles.label}>Goal Reps</Text>
-                  <TextInput
-                    style={styles.input}
-                    placeholder="Ex: 12"
-                    placeholderTextColor="#777"
-                    value={goalReps}
-                    onChangeText={setGoalReps}
-                    keyboardType="numeric"
-                  />
-                </>
-              )}
+            <Text style={styles.label}>Current Time</Text>
+            <View style={styles.timeRow}>
+              <TextInput
+                style={[styles.input, styles.timeInput]}
+                placeholder="Min"
+                placeholderTextColor="#777"
+                value={currentMinutes}
+                onChangeText={setCurrentMinutes}
+                keyboardType="numeric"
+              />
+              <Text style={styles.timeSeparator}>:</Text>
+              <TextInput
+                style={[styles.input, styles.timeInput]}
+                placeholder="Sec"
+                placeholderTextColor="#777"
+                value={currentSeconds}
+                onChangeText={setCurrentSeconds}
+                keyboardType="numeric"
+              />
+            </View>
 
-              {goalType === 'distance' && (
-                <>
-                  <Text style={styles.label}>Starting Distance</Text>
-                  <TextInput
-                    style={styles.input}
-                    placeholder="Ex: 1 km"
-                    placeholderTextColor="#777"
-                    value={startingDistance}
-                    onChangeText={setStartingDistance}
-                    keyboardType="numeric"
-                  />
-
-                  <Text style={styles.label}>Current Distance</Text>
-                  <TextInput
-                    style={styles.input}
-                    placeholder="Ex: 3 km"
-                    placeholderTextColor="#777"
-                    value={currentDistance}
-                    onChangeText={setCurrentDistance}
-                    keyboardType="numeric"
-                  />
-
-                  <Text style={styles.label}>Goal Distance</Text>
-                  <TextInput
-                    style={styles.input}
-                    placeholder="Ex: 5 km"
-                    placeholderTextColor="#777"
-                    value={goalDistance}
-                    onChangeText={setGoalDistance}
-                    keyboardType="numeric"
-                  />
-                </>
-              )}
-
-              {goalType === 'time' && (
-                <>
-                  <Text style={styles.label}>Starting Time (minutes)</Text>
-                  <TextInput
-                    style={styles.input}
-                    placeholder="Ex: 5"
-                    placeholderTextColor="#777"
-                    value={startingTime}
-                    onChangeText={setStartingTime}
-                    keyboardType="numeric"
-                  />
-
-                  <Text style={styles.label}>Goal Time (minutes)</Text>
-                  <TextInput
-                    style={styles.input}
-                    placeholder="Ex: 10"
-                    placeholderTextColor="#777"
-                    value={goalTime}
-                    onChangeText={setGoalTime}
-                    keyboardType="numeric"
-                  />
-                </>
-              )}
+            <Text style={styles.label}>Target Time</Text>
+            <View style={styles.timeRow}>
+              <TextInput
+                style={[styles.input, styles.timeInput]}
+                placeholder="Min"
+                placeholderTextColor="#777"
+                value={targetMinutes}
+                onChangeText={setTargetMinutes}
+                keyboardType="numeric"
+              />
+              <Text style={styles.timeSeparator}>:</Text>
+              <TextInput
+                style={[styles.input, styles.timeInput]}
+                placeholder="Sec"
+                placeholderTextColor="#777"
+                value={targetSeconds}
+                onChangeText={setTargetSeconds}
+                keyboardType="numeric"
+              />
+            </View>
+          </>
+        ) : (
+          <>
+            {/* existing numeric inputs for other goal types */}
+          </>
+        )}
 
 
-            {/* Save button */}
             <Pressable style={styles.saveButton} onPress={handleSave}>
-              <Text style={styles.saveText}>Save Goal</Text>
+              <Text style={styles.saveText}>Save</Text>
             </Pressable>
           </>
         )}
@@ -291,6 +321,26 @@ const [goalReps, setGoalReps] = useState('');
 }
 
 const styles = StyleSheet.create({
+  // time styles
+  timeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+
+  timeInput: {
+    flex: 1,
+    textAlign: 'center',
+    marginBottom: 0,
+  },
+
+  timeSeparator: {
+    color: '#fff',
+    fontSize: 18,
+    marginHorizontal: 8,
+    fontWeight: '700',
+  },
+
   container: { padding: 20 },
   header: { fontSize: 28, fontWeight: '700', color: '#fff', marginBottom: 20 },
   label: { color: '#aaa', fontSize: 14, marginBottom: 4, marginTop: 12 },
