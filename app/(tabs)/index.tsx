@@ -48,7 +48,7 @@ export default function Home() {
         // Fetch user's goals
         const goalsSnapshot = await getDocs(collection(db, 'users', uid, 'goals'));
         const goalsList = goalsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-        setGoals(goalsList.reverse()); // reverse to show newest first
+        setGoals(goalsList.reverse().filter(goal => !goal.completed)); // reverse to show newest first, filter out completed goals
         console.log('goalsList',goalsList)
 
         // Fetch user's workouts
@@ -89,7 +89,9 @@ export default function Home() {
 
         {/* Goals Section */}
         <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>Goals</Text>
+          <Pressable onPress={() => router.push('/goals/list')}>
+            <Text style={styles.sectionTitle}>Goals</Text>
+          </Pressable>
           <Pressable style={styles.plusButton} onPress={() => router.push('/goals/create')}>
             <Text style={styles.plusText}>+</Text>
           </Pressable>

@@ -16,9 +16,8 @@ import {
   TextInput,
   View
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import ConfettiCannon from 'react-native-confetti-cannon';
 import { useGoals } from '../context/GoalsContext'; // adjust path
-
 
 type Goal = {
   id: string;
@@ -33,6 +32,8 @@ type Goal = {
   secondaryValue?: number | null;
   secondaryUnit?: string | null;
   createdAt: any;
+  completed?: boolean;
+  completedAt?: any;
 };
 
 export default function GoalView() {
@@ -48,7 +49,7 @@ export default function GoalView() {
   const [deleteVisible, setDeleteVisible] = useState(false);
   const [modalVisible, setModalVisible] = useState(false);
   const [editTimeVisible, setEditTimeVisible] = useState(false);
-
+  const [showConfetti, setShowConfetti] = useState(false);
   const { addOrUpdateGoal, removeGoal } = useGoals();
 
 
@@ -153,8 +154,86 @@ const saveEditedValue = async (newSeconds: number) => {
   await changeCurrentValue(numeric - goal.currentValue);
 };
 
+const completeGoal = async () => {
+  setModalVisible(false);
+  console.log(`Goal ${goal.title} completed!`);
+  setModalVisible(false);
+  setShowConfetti(true);
+  setTimeout(() => setShowConfetti(false), 3500);
+
+  try {
+    const user = auth.currentUser;
+    if (!user) return;
+
+    const updatedGoal = {
+      ...goal,
+      completed: true,
+      completedAt: new Date(),
+    };
+
+    // Update local state
+    setGoal(updatedGoal);
+
+    // Update global context
+    addOrUpdateGoal(updatedGoal);
+
+    // Update Firestore
+    await updateDoc(
+      doc(db, 'users', user.uid, 'goals', goal.id),
+      {
+        completed: true,
+        completedAt: new Date(),
+      }
+    );
+
+    // 🎉 Trigger celebration
+    setShowConfetti(true);
+    setTimeout(() => setShowConfetti(false), 3500);
+
+  } catch (error) {
+    console.error('Error completing goal:', error);
+  } finally {
+    setUpdating(false);
+  }
+};
+
+const undoCompleteGoal = async () => {
+  if (!goal) return;
+
+  try {
+    const user = auth.currentUser;
+    if (!user) return;
+
+    // Update Firestore
+    await updateDoc(doc(db, 'users', user.uid, 'goals', goal.id), {
+      completed: false,
+      completedAt: null,
+    });
+
+    // Update local state
+    setGoal({ ...goal, completed: false, completedAt: null });
+    console.log(`Goal ${goal.title} marked as active again.`);
+  } catch (error) {
+    console.error('Error undoing goal completion:', error);
+  }
+};
+
+const formatGoalDate = (date: any) => {
+  if (!date) return '—';
+
+  // Firestore Timestamp
+  if (date.seconds) return new Date(date.seconds * 1000).toLocaleDateString(undefined, { year:'numeric', month:'short', day:'numeric' });
+
+  // JS Date object
+  if (date instanceof Date) return date.toLocaleDateString(undefined, { year:'numeric', month:'short', day:'numeric' });
+
+  return '—';
+};
+
+
+
 return (
-  <>
+  <View style={styles.container}>
     <Stack.Screen
       options={{
         headerLeft: () => (
@@ -179,7 +258,7 @@ return (
       }}
     />
 
-    <SafeAreaView style={styles.container}>
+    {/* <SafeAreaView style={styles.container}> */}
       <ScrollView contentContainerStyle={styles.content}>
         {/* Edit weight modal */}
         <Modal
@@ -323,10 +402,7 @@ return (
                 <Pressable
                   style={[styles.modalButton]}
                   onPress={() => {
-                    setModalVisible(false);
-                    // Here you can mark goal as complete
-                    // e.g., update Firestore or your context
-                    console.log(`Goal ${goal.title} completed!`);
+                    completeGoal();
                   }}
                 >
                   <Text style={styles.saveText}>Yes</Text>
@@ -349,6 +425,12 @@ return (
             : '—'}
         </Text>
 
+        {goal.completedAt && (
+          <Text style={styles.greenSubTitle}>
+            Completed: {formatGoalDate(goal.completedAt)}
+          </Text>
+        )}
+
         <View style={styles.weightsRow}>
           <View style={styles.weightColumn}>
             <Text style={styles.weightLabel}>Starting</Text>
@@ -356,7 +438,13 @@ return (
           </View>
           <View style={styles.weightColumn}>
             <Text style={styles.weightLabel}>Current</Text>
-            <Text style={styles.weightValue}>{formatTime(goal.currentValue, goal.unit)}</Text>
+            <Text style={styles.weightValue}>
+              {goal.completedAt ? (
+                <Text style={styles.weightValue}>-</Text>
+              ) : (
+                formatTime(goal.currentValue, goal.unit)
+              )}
+            </Text>
           </View>
           <View style={styles.weightColumn}>
             <Text style={styles.weightLabel}>Goal</Text>
@@ -372,63 +460,93 @@ return (
 
         <View style={styles.progressRow}>
           <View style={styles.progressBar}>
-            <View
-              style={[styles.progressFill, { width: `${progressPercent}%` }]}
-            />
+            {goal.completedAt ? (
+              // Show full green bar if completed
+              <View style={[styles.progressFill, { width: '100%' }]} />
+            ) : (
+              // Otherwise show progress based on percentage
+              <View style={[styles.progressFill, { width: `${progressPercent}%` }]} />
+            )}
           </View>
           <Text style={styles.progressText}>
-            {progressPercent.toFixed(0)}%
+            {goal.completedAt ? (
+              '100%'
+            ) : (
+              `${progressPercent.toFixed(0)}%`
+            )}
           </Text>
         </View>
 
         {/* '-' '+' Counter BELOW progress */}
-        <View style={styles.counterSection}>
+        {!goal.completed && (
+          <View style={styles.counterSection}>
+            <Pressable
+              style={[styles.counterButton, styles.minusButton]}
+              onPress={() => changeCurrentValue(-1)}
+              disabled={updating}
+            >
+              <Ionicons name="remove" size={22} color="#fff" />
+            </Pressable>
+
+            <Pressable
+              onPress={() => {
+                if (goal.unit === 'seconds') {
+                  // Prefill minutes & seconds for time modal
+                  const mins = Math.floor(goal.currentValue / 60);
+                  const secs = goal.currentValue % 60;
+                  setEditMinutes(String(mins));
+                  setEditSeconds(String(secs));
+                  setEditTimeVisible(true); // show time modal
+                } else {
+                  // Numeric modal
+                  setEditValue(String(goal.currentValue));
+                  setEditVisible(true);
+                }
+              }}
+            >
+              <Text style={styles.bigValue}>
+                {formatTime(goal.currentValue, goal.unit)}
+              </Text>
+            </Pressable>
+
+            <Pressable
+              style={styles.counterButton}
+              onPress={() => changeCurrentValue(1)}
+              disabled={updating}
+            >
+              <Ionicons name="add" size={22} color="#fff" />
+            </Pressable>
+          </View>
+        )}
+        
+
+        {/* Complete Goal Button
+        {!goal.completed && (
           <Pressable
-            style={[styles.counterButton, styles.minusButton]}
-            onPress={() => changeCurrentValue(-1)}
-            disabled={updating}
-          >
-            <Ionicons name="remove" size={22} color="#fff" />
-          </Pressable>
-
-          <Pressable
-            onPress={() => {
-              if (goal.unit === 'seconds') {
-                // Prefill minutes & seconds for time modal
-                const mins = Math.floor(goal.currentValue / 60);
-                const secs = goal.currentValue % 60;
-                setEditMinutes(String(mins));
-                setEditSeconds(String(secs));
-                setEditTimeVisible(true); // show time modal
-              } else {
-                // Numeric modal
-                setEditValue(String(goal.currentValue));
-                setEditVisible(true);
-              }
-            }}
-          >
-            <Text style={styles.bigValue}>
-              {formatTime(goal.currentValue, goal.unit)}
-            </Text>
-          </Pressable>
-
-
-          <Pressable
-            style={styles.counterButton}
-            onPress={() => changeCurrentValue(1)}
-            disabled={updating}
-          >
-            <Ionicons name="add" size={22} color="#fff" />
-          </Pressable>
-        </View>
-
-        {/* Complete Goal Button */}
-        <Pressable
           style={styles.completeButton}
           onPress={() => setModalVisible(true)}
         >
           <Text style={styles.completeText}>Complete Goal</Text>
         </Pressable>
+        )} */}
+
+        {/* Complete / Undo Goal Button */}
+        {!goal.completed ? (
+          <Pressable
+            style={styles.completeButton}
+            onPress={() => setModalVisible(true)}
+          >
+            <Text style={styles.completeText}>Complete Goal</Text>
+          </Pressable>
+        ) : (
+          <Pressable
+            style={[styles.completeButton, styles.undoButton]}
+            onPress={undoCompleteGoal}
+          >
+            <Text style={styles.undoText}>Undo Completion</Text>
+          </Pressable>
+        )}
+
       </ScrollView>
 
       {/* Bottom Trash Icon */}
@@ -439,13 +557,41 @@ return (
           <Ionicons name="trash-outline" size={26} color="#ff4444" />
         </Pressable>
       </View>
-    </SafeAreaView>
-  </>
+      {showConfetti && (
+        <ConfettiCannon
+          count={200}
+          origin={{ x: -10, y: 0 }}
+          fadeOut
+          explosionSpeed={350}
+          fallSpeed={3000}
+        />
+      )}
+    {/* </SafeAreaView> */}
+  </View>
 
   );
 }
 
 const styles = StyleSheet.create({
+  // Undo Button
+    undoButton: {
+    borderColor: '#EF5350', // red outline
+    borderWidth: 1,
+    backgroundColor: 'transparent',
+    paddingVertical: 14,
+    paddingHorizontal: 30,
+    borderRadius: 25,
+    alignItems: 'center',
+    alignSelf: 'center',
+    marginTop: 150,
+  },
+
+  undoText: {
+    color: '#EF5350',
+    fontWeight: '700',
+    fontSize: 16,
+  },
+
   // complete modal
   completeButton: {
     marginTop: 60,
@@ -601,6 +747,7 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#121212' },
   title: { fontSize: 28, fontWeight: '700', color: '#fff', marginBottom: 10 },
   subTitle: { fontSize: 17, fontWeight: '500', color: '#aaa', marginBottom: 8 },
+  greenSubTitle: { fontSize: 17, fontWeight: '500', color: '#4CAF50', marginBottom: 8 },
   weightsRow: { flexDirection: 'row', justifyContent: 'space-between', marginVertical: 20 },
   weightColumn: { alignItems: 'center' },
   weightLabel: { fontSize: 18, color: '#aaa', marginBottom: 2 },
