@@ -4,6 +4,7 @@ import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import 'react-native-reanimated';
 
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { GoalsProvider } from './context/GoalsContext';
 
 export const unstable_settings = {
@@ -14,14 +15,16 @@ export default function RootLayout() {
   const colorScheme = useColorScheme();
 
   return (
-    <GoalsProvider>
-      <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
-        <Stack>
-          <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-          <Stack.Screen name="modal" options={{ presentation: 'modal', title: 'Modal' }} />
+    <GestureHandlerRootView style={{ flex: 1 }}>
+      <GoalsProvider>
+        <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
+          <Stack>
+            <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+            <Stack.Screen name="modal" options={{ presentation: 'modal', title: 'Modal' }} />
         </Stack>
         <StatusBar style="auto" />
       </ThemeProvider>
     </GoalsProvider>
+    </GestureHandlerRootView>
   );
 }

@@ -98,7 +98,7 @@ export default function Home() {
         </View>
 
         {goalList.length === 0 ? (
-  <Text style={styles.emptyText}>No goals yet my friend, try creating one!</Text>
+        <Text style={styles.emptyText}>No goals yet my friend, try creating one!</Text>
           ) : (
             <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 30 }}>
               {goalList.map(goal => {
@@ -168,23 +168,106 @@ export default function Home() {
         </View>
 
         {workouts.length === 0 ? (
-          <Text style={styles.emptyText}>Workouts look empty, let's create some and get you jacked!...or lean!</Text>
+          <Text style={styles.emptyText}>
+            Workouts look empty, let's create some and get you jacked!...or lean!
+          </Text>
         ) : (
           <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-            {workouts.map(workout => (
-              <Pressable key={workout.id} style={styles.card} onPress={() => router.push('/workouts/view')}>
-                <Text style={styles.cardTitle}>{workout.title}</Text>
-                <Text style={styles.cardDescription}>{workout.description}</Text>
-              </Pressable>
-            ))}
+            {workouts.map((workout) => {
+              // Compute totals for the workout
+              let totalVolume = 0;
+              let totalReps = 0;
+              let totalDistance = 0;
+              let totalTime = 0;
+
+              if (workout.exercises) {
+                workout.exercises.forEach((ex: any) => {
+                  ex.sets?.forEach((set: any) => {
+                    const reps = Number(set.reps || 0);
+                    const weight = Number(set.weight || 0);
+                    const distance = Number(set.distance || 0);
+                    const minutes = Number(set.minutes || 0);
+                    const seconds = Number(set.seconds || 0);
+                    const time = minutes * 60 + seconds;
+
+                    // Strength exercises
+                    if (!['cardio', 'core'].includes(ex.category.toLowerCase())) {
+                      totalVolume += reps * weight;
+                      totalReps += reps;
+                    }
+
+                    // Core
+                    if (ex.category.toLowerCase() === 'core') {
+                      totalReps += reps;
+                      totalTime += time;
+                    }
+
+                    // Cardio
+                    if (ex.category.toLowerCase() === 'cardio') {
+                      totalDistance += distance;
+                      totalTime += time;
+                    }
+                  });
+                });
+              }
+
+              // Format totalTime into h:m:s
+              const hours = Math.floor(totalTime / 3600);
+              const minutes = Math.floor((totalTime % 3600) / 60);
+              const seconds = totalTime % 60;
+              const timeString = `${hours > 0 ? hours + 'h ' : ''}${
+                minutes > 0 ? minutes + 'm ' : ''
+              }${seconds}s`;
+
+              return (
+                <Pressable
+                  key={workout.id}
+                  style={styles.card}
+                  onPress={() => router.push(`/workouts/${workout.id}`)}
+                >
+                  <Text style={styles.workoutCardTitle}>{workout.title}</Text>
+                  {workout.description ? (
+                    <Text style={styles.cardDescription}>{workout.description}</Text>
+                  ) : null}
+
+                  {workout.exercises?.length > 0 && (
+                    <>
+                      <Text style={styles.cardInfo}>
+                        Exercises: {workout.exercises.length}
+                      </Text>
+                      <Text style={styles.cardInfo}>
+                        Sets: {workout.exercises.reduce(
+                          (acc: number, ex: any) => acc + (ex.sets?.length || 0),
+                          0
+                        )}
+                      </Text>
+                    </>
+                  )}
+
+                  {totalVolume > 0 && (
+                    <Text style={styles.cardInfo}>Volume: {totalVolume} {workout.weightUnit || 'lbs'}</Text>
+                  )}
+                  {totalReps > 0 && <Text style={styles.cardInfo}>Reps: {totalReps}</Text>}
+                  {totalDistance > 0 && (
+                    <Text style={styles.cardInfo}>
+                      Distance: {totalDistance} {workout.distanceUnit || 'miles'}
+                    </Text>
+                  )}
+                  {totalTime > 0 && <Text style={styles.cardInfo}>Time: {timeString}</Text>}
+                </Pressable>
+              );
+            })}
           </ScrollView>
         )}
+
       </ScrollView>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
+  cardInfo: { fontSize: 12, color: '#aaa', marginBottom: 2 },
+
   safeArea: { flex: 1, backgroundColor: '#121212' },
   container: { flex: 1, backgroundColor: '#121212' },
   header: { fontSize: 25, fontWeight: 'bold', marginBottom: 20, color: '#fff' },
@@ -193,8 +276,9 @@ const styles = StyleSheet.create({
   plusButton: { width: 32, height: 32, borderRadius: 25, justifyContent: 'center', alignItems: 'center' },
   plusText: { fontSize: 20, fontWeight: 'bold', color: '#fff' },
   emptyText: { color: '#aaa', fontSize: 16, fontStyle: 'italic', marginVertical: 20 },
-  card: { backgroundColor: '#1f1f1f', width: 220, borderRadius: 16, padding: 20, marginRight: 15 },
+  card: { backgroundColor: '#1f1f1f', width: 220, borderRadius: 16, padding: 15, marginRight: 15 },
   cardTitle: { fontSize: 18, fontWeight: '700', color: '#fff', marginBottom: 8 },
+  workoutCardTitle: { fontSize: 18, fontWeight: '700', color: '#fff', marginBottom: 4 },
   cardDescription: { fontSize: 14, color: '#aaa', marginBottom: 10 },
   weightsRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 8 },
   weightColumn: { alignItems: 'center' },
