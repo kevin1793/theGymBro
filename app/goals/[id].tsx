@@ -1,8 +1,9 @@
 import { auth, db } from '@/lib/firebase';
+import { deleteGoal, saveGoal } from '@/repositories/goalRepo';
 import { formatTime } from '@/utils/helper'; // helper to format time units
 import { Ionicons } from '@expo/vector-icons';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
-import { deleteDoc, doc, getDoc, updateDoc } from 'firebase/firestore';
+import { deleteDoc, doc, updateDoc } from 'firebase/firestore';
 import React, { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
@@ -17,7 +18,8 @@ import {
   View
 } from 'react-native';
 import ConfettiCannon from 'react-native-confetti-cannon';
-import { useGoals } from '../context/GoalsContext'; // adjust path
+import { useGoals } from '../../context/GoalsContext'; // adjust path
+import { getOne } from '../../database/db'; // Import the getOne function to fetch a single record from SQLite
 
 type Goal = {
   id: string;
@@ -54,29 +56,28 @@ export default function GoalView() {
 
 
   useEffect(() => {
-    const fetchGoal = async () => {
-      if (!id) return;
-      try {
-        const user = auth.currentUser;
-        if (!user) return;
-
-        const goalDoc = await getDoc(doc(db, 'users', user.uid, 'goals', id));
-        if (goalDoc.exists()) {
-          const goalData = goalDoc.data() as Goal;
-          setGoal({ id: goalDoc.id, ...goalData });
-        } else {
-          setGoal(null);
-        }
-      } catch (error) {
-        console.error('Error fetching goal:', error);
+  const fetchGoal = async () => {
+    if (!id) return;
+    try {
+      setLoading(true);
+      // SQLite Query
+      const data = await getOne<Goal>(`SELECT * FROM goals WHERE id = ?`, [id]);
+      
+      if (data) {
+        setGoal(data);
+      } else {
         setGoal(null);
-      } finally {
-        setLoading(false);
       }
-    };
+    } catch (error) {
+      console.error('Error fetching goal from SQLite:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
 
-    fetchGoal();
-  }, [id]);
+  fetchGoal();
+}, [id]);
+
 
   if (loading) {
     return (
@@ -154,7 +155,7 @@ const saveEditedValue = async (newSeconds: number) => {
   await changeCurrentValue(numeric - goal.currentValue);
 };
 
-const completeGoal = async () => {
+const completeGoalKickOff = async () => {
   setModalVisible(false);
   console.log(`Goal ${goal.title} completed!`);
   setModalVisible(false);
@@ -167,12 +168,12 @@ const completeGoal = async () => {
 
     const updatedGoal = {
       ...goal,
-      completed: true,
-      completedAt: new Date(),
-    };
+      completed: 1,
+      completedAt: Date.now(),};
 
     // Update local state
-    setGoal(updatedGoal);
+    // setGoal(updatedGoal);
+    saveGoal(updatedGoal); // Update SQLite
 
     // Update global context
     addOrUpdateGoal(updatedGoal);
@@ -369,7 +370,7 @@ return (
                 <Pressable
                   onPress={() => {
                     setDeleteVisible(false);
-                    removeGoalFromDb();
+                    deleteGoal(goal.id); // removeGoalFromDb();
                   }}
                 >
                   <Text style={styles.deleteConfirmText}>Delete</Text>
@@ -402,7 +403,7 @@ return (
                 <Pressable
                   style={[styles.modalButton]}
                   onPress={() => {
-                    completeGoal();
+                    completeGoalKickOff(); // Mark as completed in DB
                   }}
                 >
                   <Text style={styles.saveText}>Yes</Text>
@@ -417,7 +418,7 @@ return (
         {/* <Text style={styles.subTitle}>Goal Type: {goal.goalType}</Text> */}
         <Text style={styles.subTitle}>
           Started: {goal?.createdAt
-            ? new Date(goal.createdAt.seconds * 1000).toLocaleDateString(undefined, {
+            ? new Date(goal.createdAt).toLocaleDateString(undefined, {
                 year: 'numeric',
                 month: 'short',
                 day: 'numeric',

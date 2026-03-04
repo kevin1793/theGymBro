@@ -1,8 +1,9 @@
 import { exercises } from '@/data/exercises';
-import { auth, db } from '@/lib/firebase';
+import { auth } from '@/lib/firebase';
+import { saveGoal } from '@/repositories/goalRepo';
 import { Ionicons } from '@expo/vector-icons';
-import { Stack, useRouter } from 'expo-router';
-import { addDoc, collection, serverTimestamp } from 'firebase/firestore';
+import * as Crypto from 'expo-crypto';
+import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useState } from 'react';
 import {
   FlatList,
@@ -15,25 +16,63 @@ import {
   View
 } from 'react-native';
 import DropDownPicker from 'react-native-dropdown-picker';
-import { useGoals } from '../context/GoalsContext';
+import { useGoals } from '../../context/GoalsContext';
+
 
 export default function CreateGoal() {
   const router = useRouter();
-  const { addOrUpdateGoal } = useGoals(); // ✅ use context function
+  const { addOrUpdateGoal, goals } = useGoals();
+  const { id } = useLocalSearchParams<{ id?: string }>(); // optional goal id for editing
+
+  const editingGoal = id ? goals.find(g => g.id === id) : undefined;
 
   const userWeightUnit: 'kg' | 'lbs' = 'lbs';
   const userDistanceUnit: 'km' | 'miles' = 'miles';
 
-  const [title, setTitle] = useState('');
-  const [exercise, setExercise] = useState<string | null>(null);
+  // Form states (pre-filled if editing)
+  const [title, setTitle] = useState(editingGoal?.title ?? '');
+  const [exercise, setExercise] = useState<string | null>(editingGoal?.exercise ?? null);
+  const [goalType, setGoalType] = useState<string | null>(editingGoal?.goalType ?? null);
 
   const [open, setOpen] = useState(false);
   const [items, setItems] = useState(
     exercises.map((ex) => ({ label: ex.name, value: ex.name }))
   );
 
-  const [goalType, setGoalType] = useState<string | null>(null);
   const [goalTypeOpen, setGoalTypeOpen] = useState(false);
+
+  const [startValue, setStartValue] = useState(
+    editingGoal && editingGoal.goalType !== 'time' ? String(editingGoal.startValue) : ''
+  );
+  const [currentValue, setCurrentValue] = useState(
+    editingGoal && editingGoal.goalType !== 'time' ? String(editingGoal.currentValue) : ''
+  );
+  const [targetValue, setTargetValue] = useState(
+    editingGoal && editingGoal.goalType !== 'time' ? String(editingGoal.targetValue) : ''
+  );
+  const [secondaryValue, setSecondaryValue] = useState(
+    editingGoal?.secondaryValue ? String(editingGoal.secondaryValue) : ''
+  );
+
+  // Time inputs
+  const [startMinutes, setStartMinutes] = useState(
+    editingGoal?.goalType === 'time' ? Math.floor((editingGoal.startValue ?? 0) / 60) : 0
+  );
+  const [startSeconds, setStartSeconds] = useState(
+    editingGoal?.goalType === 'time' ? (editingGoal.startValue ?? 0) % 60 : 0
+  );
+  const [currentMinutes, setCurrentMinutes] = useState(
+    editingGoal?.goalType === 'time' ? Math.floor((editingGoal.currentValue ?? 0) / 60) : 0
+  );
+  const [currentSeconds, setCurrentSeconds] = useState(
+    editingGoal?.goalType === 'time' ? (editingGoal.currentValue ?? 0) % 60 : 0
+  );
+  const [targetMinutes, setTargetMinutes] = useState(
+    editingGoal?.goalType === 'time' ? Math.floor((editingGoal.targetValue ?? 0) / 60) : 0
+  );
+  const [targetSeconds, setTargetSeconds] = useState(
+    editingGoal?.goalType === 'time' ? (editingGoal.targetValue ?? 0) % 60 : 0
+  );
 
   const goalTypeOptions = [
     { label: '1 Rep Max', value: '1rep' },
@@ -42,18 +81,7 @@ export default function CreateGoal() {
     { label: 'Distance', value: 'distance' },
   ];
 
-  const [startValue, setStartValue] = useState('');
-  const [currentValue, setCurrentValue] = useState('');
-  const [targetValue, setTargetValue] = useState('');
-  const [secondaryValue, setSecondaryValue] = useState('');
-
-  const [startMinutes, setStartMinutes] = useState(0);
-  const [startSeconds, setStartSeconds] = useState(0);
-  const [currentMinutes, setCurrentMinutes] = useState(0);
-  const [currentSeconds, setCurrentSeconds] = useState(0);
-  const [targetMinutes, setTargetMinutes] = useState(0);
-  const [targetSeconds, setTargetSeconds] = useState(0);
-
+  const requiresSecondaryWeight = goalType === 'max_reps';
 
   const getMeasurementLabel = () => {
     switch (goalType) {
@@ -65,49 +93,50 @@ export default function CreateGoal() {
     }
   };
 
-  const requiresSecondaryWeight = goalType === 'max_reps';
-
   const handleSave = async () => {
-  try {
-    const user = auth.currentUser;
-    if (!user) return console.log('User not logged in');
+    try {
+      const uid = auth.currentUser?.uid;
+      if (!uid) return console.log('User not logged in');
 
-    // Convert time inputs to total seconds
-    const convertToSeconds = (min: string, sec: string) =>
-      Number(min) * 60 + Number(sec);
+      const convertToSeconds = (min: string | number, sec: string | number) =>
+        Number(min) * 60 + Number(sec);
 
-    const goalData = {
-      title,
-      exercise,
-      goalType,
-      measurementType:
-        goalType === '1rep' ? 'weight' :
-        goalType === 'max_reps' ? 'reps' : goalType,
-      unit:
-        goalType === '1rep' ? userWeightUnit :
-        goalType === 'max_reps' ? 'reps' :
-        goalType === 'distance' ? 'km' : 'seconds',
-      startValue: goalType === 'time' ? convertToSeconds(startMinutes, startSeconds) : Number(startValue),
-      currentValue: goalType === 'time' ? convertToSeconds(currentMinutes, currentSeconds) : Number(currentValue),
-      targetValue: goalType === 'time' ? convertToSeconds(targetMinutes, targetSeconds) : Number(targetValue),
-      secondaryValue:
-        requiresSecondaryWeight && secondaryValue ? Number(secondaryValue) : null,
-      secondaryUnit: requiresSecondaryWeight ? userWeightUnit : null,
-      createdAt: serverTimestamp(),
-    };
+      const goalData = {
+        id: editingGoal?.id || Crypto.randomUUID(), // keep id if editing
+        title,
+        exercise,
+        goalType,
+        measurementType:
+          goalType === '1rep' ? 'weight' :
+          goalType === 'max_reps' ? 'reps' : goalType,
+        unit:
+          goalType === '1rep' ? userWeightUnit :
+          goalType === 'max_reps' ? 'reps' :
+          goalType === 'distance' ? userDistanceUnit : 'seconds',
+        startValue: goalType === 'time'
+          ? convertToSeconds(startMinutes, startSeconds)
+          : Number(startValue),
+        currentValue: goalType === 'time'
+          ? convertToSeconds(currentMinutes, currentSeconds)
+          : Number(currentValue),
+        targetValue: goalType === 'time'
+          ? convertToSeconds(targetMinutes, targetSeconds)
+          : Number(targetValue),
+        secondaryValue: requiresSecondaryWeight && secondaryValue ? Number(secondaryValue) : null,
+        secondaryUnit: requiresSecondaryWeight ? userWeightUnit : null,
+        completed: false,
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+      };
 
-    const docRef = await addDoc(
-      collection(db, 'users', user.uid, 'goals'),
-      goalData
-    );
+      const savedGoal = await saveGoal(goalData);
+      addOrUpdateGoal(savedGoal);
 
-    addOrUpdateGoal({ id: docRef.id, ...goalData });
-    router.replace('/(tabs)');
-  } catch (error) {
-    console.log('Error saving goal:', error);
-  }
+      router.replace('/(tabs)');
+    } catch (error) {
+      console.log('Error saving goal:', error);
+    }
   };
-
 
   return (
     <KeyboardAvoidingView
@@ -118,13 +147,7 @@ export default function CreateGoal() {
         options={{
           headerLeft: () => (
             <Pressable
-              onPress={() => {
-                if (router.canGoBack()) {
-                  router.back(); // normal push stack
-                } else {
-                  router.push('/'); // fallback if JS stack is empty
-                }
-              }}
+              onPress={() => router.canGoBack() ? router.back() : router.push('/')}
               style={{ paddingHorizontal: 16 }}
             >
               <Ionicons name="chevron-back" size={24} color="#fff" />
@@ -144,8 +167,9 @@ export default function CreateGoal() {
         contentContainerStyle={styles.container}
         renderItem={() => (
           <>
-            <Text style={styles.header}>Create New Goal</Text>
+            <Text style={styles.header}>{editingGoal ? 'Edit Goal' : 'Create New Goal'}</Text>
 
+            {/* Title */}
             <Text style={styles.label}>Title</Text>
             <TextInput
               style={styles.input}
@@ -155,6 +179,7 @@ export default function CreateGoal() {
               onChangeText={setTitle}
             />
 
+            {/* Exercise */}
             <Text style={styles.label}>Exercise</Text>
             <DropDownPicker
               open={open}
@@ -175,6 +200,7 @@ export default function CreateGoal() {
               placeholderStyle={{ color: '#777' }}
             />
 
+            {/* Goal Type */}
             <Text style={styles.label}>Goal Type</Text>
             <DropDownPicker
               open={goalTypeOpen}
@@ -189,8 +215,8 @@ export default function CreateGoal() {
               placeholderStyle={{ color: '#777' }}
             />
 
-            {goalType !== 'time' &&
-             (
+            {/* Numeric / Weight Inputs */}
+            {goalType !== 'time' && (
               <>
                 {requiresSecondaryWeight && (
                   <>
@@ -205,7 +231,6 @@ export default function CreateGoal() {
                     />
                   </>
                 )}
-
                 <Text style={styles.label}>Starting {getMeasurementLabel()}</Text>
                 <TextInput
                   style={styles.input}
@@ -215,7 +240,6 @@ export default function CreateGoal() {
                   onChangeText={setStartValue}
                   keyboardType="numeric"
                 />
-
                 <Text style={styles.label}>Current {getMeasurementLabel()}</Text>
                 <TextInput
                   style={styles.input}
@@ -225,7 +249,6 @@ export default function CreateGoal() {
                   onChangeText={setCurrentValue}
                   keyboardType="numeric"
                 />
-
                 <Text style={styles.label}>Goal {getMeasurementLabel()}</Text>
                 <TextInput
                   style={styles.input}
@@ -238,80 +261,76 @@ export default function CreateGoal() {
               </>
             )}
 
-            {goalType === 'time' ? (
-            <>
-            <Text style={styles.label}>Starting Time</Text>
-            <View style={styles.timeRow}>
-              <TextInput
-                style={[styles.input, styles.timeInput]}
-                placeholder="Min"
-                placeholderTextColor="#777"
-                value={startMinutes}
-                onChangeText={setStartMinutes}
-                keyboardType="numeric"
-              />
-              <Text style={styles.timeSeparator}>:</Text>
-              <TextInput
-                style={[styles.input, styles.timeInput]}
-                placeholder="Sec"
-                placeholderTextColor="#777"
-                value={startSeconds}
-                onChangeText={setStartSeconds}
-                keyboardType="numeric"
-              />
-            </View>
+            {/* Time Inputs */}
+            {goalType === 'time' && (
+              <>
+                <Text style={styles.label}>Starting Time</Text>
+                <View style={styles.timeRow}>
+                  <TextInput
+                    style={[styles.input, styles.timeInput]}
+                    placeholder="Min"
+                    placeholderTextColor="#777"
+                    value={String(startMinutes)}
+                    onChangeText={text => setStartMinutes(Number(text))}
+                    keyboardType="numeric"
+                  />
+                  <Text style={styles.timeSeparator}>:</Text>
+                  <TextInput
+                    style={[styles.input, styles.timeInput]}
+                    placeholder="Sec"
+                    placeholderTextColor="#777"
+                    value={String(startSeconds)}
+                    onChangeText={text => setStartSeconds(Number(text))}
+                    keyboardType="numeric"
+                  />
+                </View>
 
-            <Text style={styles.label}>Current Time</Text>
-            <View style={styles.timeRow}>
-              <TextInput
-                style={[styles.input, styles.timeInput]}
-                placeholder="Min"
-                placeholderTextColor="#777"
-                value={currentMinutes}
-                onChangeText={setCurrentMinutes}
-                keyboardType="numeric"
-              />
-              <Text style={styles.timeSeparator}>:</Text>
-              <TextInput
-                style={[styles.input, styles.timeInput]}
-                placeholder="Sec"
-                placeholderTextColor="#777"
-                value={currentSeconds}
-                onChangeText={setCurrentSeconds}
-                keyboardType="numeric"
-              />
-            </View>
+                <Text style={styles.label}>Current Time</Text>
+                <View style={styles.timeRow}>
+                  <TextInput
+                    style={[styles.input, styles.timeInput]}
+                    placeholder="Min"
+                    placeholderTextColor="#777"
+                    value={String(currentMinutes)}
+                    onChangeText={text => setCurrentMinutes(Number(text))}
+                    keyboardType="numeric"
+                  />
+                  <Text style={styles.timeSeparator}>:</Text>
+                  <TextInput
+                    style={[styles.input, styles.timeInput]}
+                    placeholder="Sec"
+                    placeholderTextColor="#777"
+                    value={String(currentSeconds)}
+                    onChangeText={text => setCurrentSeconds(Number(text))}
+                    keyboardType="numeric"
+                  />
+                </View>
 
-            <Text style={styles.label}>Target Time</Text>
-            <View style={styles.timeRow}>
-              <TextInput
-                style={[styles.input, styles.timeInput]}
-                placeholder="Min"
-                placeholderTextColor="#777"
-                value={targetMinutes}
-                onChangeText={setTargetMinutes}
-                keyboardType="numeric"
-              />
-              <Text style={styles.timeSeparator}>:</Text>
-              <TextInput
-                style={[styles.input, styles.timeInput]}
-                placeholder="Sec"
-                placeholderTextColor="#777"
-                value={targetSeconds}
-                onChangeText={setTargetSeconds}
-                keyboardType="numeric"
-              />
-            </View>
-          </>
-        ) : (
-          <>
-            {/* existing numeric inputs for other goal types */}
-          </>
-        )}
-
+                <Text style={styles.label}>Target Time</Text>
+                <View style={styles.timeRow}>
+                  <TextInput
+                    style={[styles.input, styles.timeInput]}
+                    placeholder="Min"
+                    placeholderTextColor="#777"
+                    value={String(targetMinutes)}
+                    onChangeText={text => setTargetMinutes(Number(text))}
+                    keyboardType="numeric"
+                  />
+                  <Text style={styles.timeSeparator}>:</Text>
+                  <TextInput
+                    style={[styles.input, styles.timeInput]}
+                    placeholder="Sec"
+                    placeholderTextColor="#777"
+                    value={String(targetSeconds)}
+                    onChangeText={text => setTargetSeconds(Number(text))}
+                    keyboardType="numeric"
+                  />
+                </View>
+              </>
+            )}
 
             <Pressable style={styles.saveButton} onPress={handleSave}>
-              <Text style={styles.saveText}>Save</Text>
+              <Text style={styles.saveText}>{editingGoal ? 'Update' : 'Save'}</Text>
             </Pressable>
           </>
         )}
@@ -321,54 +340,15 @@ export default function CreateGoal() {
 }
 
 const styles = StyleSheet.create({
-  // time styles
-  timeRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 16,
-  },
-
-  timeInput: {
-    flex: 1,
-    textAlign: 'center',
-    marginBottom: 0,
-  },
-
-  timeSeparator: {
-    color: '#fff',
-    fontSize: 18,
-    marginHorizontal: 8,
-    fontWeight: '700',
-  },
-
+  timeRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 16 },
+  timeInput: { flex: 1, textAlign: 'center', marginBottom: 0 },
+  timeSeparator: { color: '#fff', fontSize: 18, marginHorizontal: 8, fontWeight: '700' },
   container: { padding: 20 },
   header: { fontSize: 28, fontWeight: '700', color: '#fff', marginBottom: 20 },
   label: { color: '#aaa', fontSize: 14, marginBottom: 4, marginTop: 12 },
-  input: {
-    backgroundColor: '#1f1f1f',
-    color: '#fff',
-    padding: 12,
-    borderRadius: 12,
-    fontSize: 16,
-    marginBottom: 16,
-  },
-  dropdown: {
-    backgroundColor: '#1f1f1f',
-    borderRadius: 12,
-    borderColor: '#1f1f1f',
-    marginBottom: 16,
-  },
-  dropdownContainer: {
-    backgroundColor: '#1f1f1f',
-    borderColor: '#1f1f1f',
-    borderRadius: 12,
-  },
-  saveButton: {
-    backgroundColor: '#4CAF50',
-    padding: 16,
-    borderRadius: 12,
-    marginTop: 30,
-    alignItems: 'center',
-  },
+  input: { backgroundColor: '#1f1f1f', color: '#fff', padding: 12, borderRadius: 12, fontSize: 16, marginBottom: 16 },
+  dropdown: { backgroundColor: '#1f1f1f', borderRadius: 12, borderColor: '#1f1f1f', marginBottom: 16 },
+  dropdownContainer: { backgroundColor: '#1f1f1f', borderColor: '#1f1f1f', borderRadius: 12 },
+  saveButton: { backgroundColor: '#4CAF50', padding: 16, borderRadius: 12, marginTop: 30, alignItems: 'center' },
   saveText: { color: '#fff', fontWeight: '700', fontSize: 16 },
 });

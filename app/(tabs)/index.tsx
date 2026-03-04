@@ -1,9 +1,12 @@
 import QuoteBanner from '@/components/QuoteBanner';
 import ProgressTracker from '@/components/WeeklyTracker';
 import { auth, db } from '@/lib/firebase';
+import { deleteBrokenGoals, getActiveGoals } from '@/repositories/goalRepo';
+import { getUser, saveUser } from '@/repositories/usersRepo';
+import { getWorkoutsWithRelations } from '@/repositories/workoutRepo';
 import { formatTime } from '@/utils/helper';
 import { useRouter } from 'expo-router';
-import { collection, doc, getDoc, getDocs } from 'firebase/firestore';
+import { doc, getDoc } from 'firebase/firestore';
 import { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
@@ -14,7 +17,8 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useGoals } from '../context/GoalsContext';
+import { useGoals } from '../../context/GoalsContext';
+
 
 type Workout = {
   id: string;
@@ -32,37 +36,52 @@ export default function Home() {
   const [workouts, setWorkouts] = useState<Workout[]>([]);
 
   useEffect(() => {
-    const fetchUserData = async () => {
+    const loadLocalData = async () => {
+      await deleteBrokenGoals(); // Run cleanup
+
       setLoading(true);
+
       try {
         const uid = auth.currentUser?.uid;
         if (!uid) return;
 
-        // Fetch user first name
-        const userDoc = await getDoc(doc(db, 'users', uid));
-        if (userDoc.exists()) {
-          const data = userDoc.data();
-          setFirstName(data.firstName || '');
+        // Load goals
+        const goalsList = await getActiveGoals();
+        setGoals(goalsList);
+        console.log('Loaded goals from local DB:', goalsList);
+
+        // Load workouts
+        const workoutsList = await getWorkoutsWithRelations();
+        setWorkouts(workoutsList);
+
+        // Load user
+        let user = await getUser(uid);
+        if (!user) {
+          const userDoc = await getDoc(doc(db, 'users', uid));
+          if (userDoc.exists()) {
+            const data = userDoc.data();
+            user = {
+              uid,
+              firstName: data.firstName || '',
+              lastName: data.lastName || '',
+              email: auth.currentUser?.email || '',
+              createdAt: Date.now(),
+              updatedAt: Date.now(),
+            };
+            await saveUser(user);
+          }
         }
 
-        // Fetch user's goals
-        const goalsSnapshot = await getDocs(collection(db, 'users', uid, 'goals'));
-        const goalsList = goalsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-        setGoals(goalsList.reverse().filter(goal => !goal.completed)); // reverse to show newest first, filter out completed goals
-        console.log('goalsList',goalsList)
+        if (user) setFirstName(user.firstName);
 
-        // Fetch user's workouts
-        const workoutsSnapshot = await getDocs(collection(db, 'users', uid, 'workouts'));
-        const workoutsList = workoutsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-        setWorkouts(workoutsList);
       } catch (error) {
-        console.error('Error fetching user data:', error);
+        console.error('Error loading local data:', error);
       } finally {
         setLoading(false);
       }
     };
 
-    fetchUserData();
+    loadLocalData();
   }, []);
 
   const getGreeting = () => {
@@ -102,6 +121,7 @@ export default function Home() {
           ) : (
             <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 30 }}>
               {goalList.map(goal => {
+                if (!goal) return null; 
                 let progressPercent = 0;
 
                 if (goal.startValue != null && goal.currentValue != null && goal.targetValue != null) {
@@ -129,7 +149,7 @@ export default function Home() {
                     <Text style={styles.cardDescription}>Exercise: {goal.exercise}</Text>
 
                     {/* Only render weights if startValue exists */}
-                    {goal.startValue !== undefined && (
+                    {goal.startValue != null && ( 
                       <View style={styles.weightsRow}>
                         <View style={styles.weightColumn}>
                           <Text style={styles.weightLabel}>Starting</Text>

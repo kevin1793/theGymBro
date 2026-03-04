@@ -4,8 +4,11 @@ import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import 'react-native-reanimated';
 
+import { initDatabase } from '@/database/db';
+import { runMigrations } from '@/database/migrations';
+import { useEffect, useState } from 'react';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
-import { GoalsProvider } from './context/GoalsContext';
+import { GoalsProvider } from '../context/GoalsContext';
 
 export const unstable_settings = {
   anchor: '(tabs)',
@@ -13,6 +16,24 @@ export const unstable_settings = {
 
 export default function RootLayout() {
   const colorScheme = useColorScheme();
+  const [ready, setReady] = useState(false);
+
+  useEffect(() => {
+    async function setup() {
+      try {
+        await initDatabase();
+        await runMigrations();
+      } catch (error) {
+        console.error('Database setup failed:', error);
+      } finally {
+        setReady(true);
+      }
+    }
+
+    setup();
+  }, []);
+
+  if (!ready) return null;
 
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
