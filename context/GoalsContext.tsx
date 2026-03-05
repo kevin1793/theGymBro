@@ -4,13 +4,18 @@ export type GoalType = {
   id: string;
   title: string;
   exercise: string;
-  goalType: string;
-  unit: string;
   startValue: number;
   currentValue: number;
   targetValue: number;
+  unit: string;
+  completed: 0 | 1;
+  createdAt: number;
+  updatedAt: number;
+  completedAt?: number | null;
   secondaryValue?: number | null;
   secondaryUnit?: string | null;
+  goalType?: string | null;
+  measurementType?: string | null;
 };
 
 type GoalsContextType = {

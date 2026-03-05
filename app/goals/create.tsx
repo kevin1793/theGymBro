@@ -1,6 +1,6 @@
 import { exercises } from '@/data/exercises';
 import { auth } from '@/lib/firebase';
-import { saveGoal } from '@/repositories/goalRepo';
+import { Goal, saveGoal } from '@/repositories/goalRepo';
 import { Ionicons } from '@expo/vector-icons';
 import * as Crypto from 'expo-crypto';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
@@ -124,13 +124,15 @@ export default function CreateGoal() {
           : Number(targetValue),
         secondaryValue: requiresSecondaryWeight && secondaryValue ? Number(secondaryValue) : null,
         secondaryUnit: requiresSecondaryWeight ? userWeightUnit : null,
-        completed: false,
+        completed: 0,
         createdAt: Date.now(),
         updatedAt: Date.now(),
       };
-
-      const savedGoal = await saveGoal(goalData);
-      addOrUpdateGoal(savedGoal);
+      console.log('Saving goal:', goalData);
+      // const savedGoal = await saveGoal(goalData);
+      // addOrUpdateGoal(savedGoal);
+      await saveGoal(goalData as Goal);
+      addOrUpdateGoal(goalData as Goal);
 
       router.replace('/(tabs)');
     } catch (error) {
@@ -153,7 +155,7 @@ export default function CreateGoal() {
               <Ionicons name="chevron-back" size={24} color="#fff" />
             </Pressable>
           ),
-          title: '',
+          title: editingGoal ? 'Edit Goal' : 'Create Goal',
           headerBackTitle: '',
           headerBackTitleVisible: false,
           headerTintColor: '#fff',
@@ -167,7 +169,7 @@ export default function CreateGoal() {
         contentContainerStyle={styles.container}
         renderItem={() => (
           <>
-            <Text style={styles.header}>{editingGoal ? 'Edit Goal' : 'Create New Goal'}</Text>
+            {/* <Text style={styles.header}>{editingGoal ? 'Edit Goal' : 'Create New Goal'}</Text> */}
 
             {/* Title */}
             <Text style={styles.label}>Title</Text>

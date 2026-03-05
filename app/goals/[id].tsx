@@ -1,9 +1,7 @@
-import { auth, db } from '@/lib/firebase';
-import { deleteGoal, saveGoal } from '@/repositories/goalRepo';
+import { deleteGoal, Goal, saveGoal } from '@/repositories/goalRepo';
 import { formatTime } from '@/utils/helper'; // helper to format time units
 import { Ionicons } from '@expo/vector-icons';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
-import { deleteDoc, doc, updateDoc } from 'firebase/firestore';
 import React, { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
@@ -21,22 +19,7 @@ import ConfettiCannon from 'react-native-confetti-cannon';
 import { useGoals } from '../../context/GoalsContext'; // adjust path
 import { getOne } from '../../database/db'; // Import the getOne function to fetch a single record from SQLite
 
-type Goal = {
-  id: string;
-  title: string;
-  exercise: string;
-  goalType: string;
-  measurementType: string;
-  unit: string;
-  startValue: number;
-  currentValue: number;
-  targetValue: number;
-  secondaryValue?: number | null;
-  secondaryUnit?: string | null;
-  createdAt: any;
-  completed?: boolean;
-  completedAt?: any;
-};
+// type GoalSchema = Goal;
 
 export default function GoalView() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -64,6 +47,7 @@ export default function GoalView() {
       const data = await getOne<Goal>(`SELECT * FROM goals WHERE id = ?`, [id]);
       
       if (data) {
+        console.log('Fetched goal from SQLite:', data);
         setGoal(data);
       } else {
         setGoal(null);
@@ -111,35 +95,42 @@ export default function GoalView() {
     }
   }
   const changeCurrentValue = async (delta: number) => {
+    if (!goal) return;
+
+    setUpdating(true);
+
+    try {
+      const newValue = goal.currentValue + delta;
+
+      const updatedGoal = {
+        ...goal,
+        currentValue: newValue,
+      };
+
+      setGoal(updatedGoal);
+
+      // Save to SQLite
+      await saveGoal(updatedGoal);
+
+      // Update global context
+      addOrUpdateGoal(updatedGoal);
+
+    } catch (error) {
+      console.error('Error updating goal value:', error);
+    } finally {
+      setUpdating(false);
+    }
+  };
+
+const confirmDeleteGoal = async () => {
   if (!goal) return;
-  setUpdating(true);
+
   try {
-    const user = auth.currentUser;
-    if (!user) return;
+    await deleteGoal(goal.id);
 
-    const newValue = goal.currentValue + delta;
-    const updatedGoal = { ...goal, currentValue: newValue };
-    setGoal(updatedGoal); // update local
-    addOrUpdateGoal(updatedGoal); // update global store
-
-    await updateDoc(doc(db, 'users', user.uid, 'goals', goal.id), {
-      currentValue: newValue,
-    });
-  } catch (error) {
-    console.error('Error updating currentValue:', error);
-  } finally {
-    setUpdating(false);
-  }
-};
-
-const removeGoalFromDb = async () => {
-  if (!goal) return;
-  try {
-    const user = auth.currentUser;
-    if (!user) return;
-    await deleteDoc(doc(db, 'users', user.uid, 'goals', goal.id));
-    removeGoal(goal.id); // update global store
+    removeGoal(goal.id); // update context
     router.back();
+
   } catch (error) {
     console.error('Error deleting goal:', error);
   }
@@ -156,40 +147,30 @@ const saveEditedValue = async (newSeconds: number) => {
 };
 
 const completeGoalKickOff = async () => {
+  if (!goal) return;
+
+  setUpdating(true);
   setModalVisible(false);
-  console.log(`Goal ${goal.title} completed!`);
+
   setModalVisible(false);
   setShowConfetti(true);
   setTimeout(() => setShowConfetti(false), 3500);
 
   try {
-    const user = auth.currentUser;
-    if (!user) return;
-
     const updatedGoal = {
       ...goal,
       completed: 1,
-      completedAt: Date.now(),};
+      completedAt: Date.now(),
+    };
 
-    // Update local state
-    // setGoal(updatedGoal);
-    saveGoal(updatedGoal); // Update SQLite
+    // update local page
+    setGoal(updatedGoal);
 
-    // Update global context
+    // save to SQLite
+    await saveGoal(updatedGoal);
+
+    // update global goals state
     addOrUpdateGoal(updatedGoal);
-
-    // Update Firestore
-    await updateDoc(
-      doc(db, 'users', user.uid, 'goals', goal.id),
-      {
-        completed: true,
-        completedAt: new Date(),
-      }
-    );
-
-    // 🎉 Trigger celebration
-    setShowConfetti(true);
-    setTimeout(() => setShowConfetti(false), 3500);
 
   } catch (error) {
     console.error('Error completing goal:', error);
@@ -202,33 +183,31 @@ const undoCompleteGoal = async () => {
   if (!goal) return;
 
   try {
-    const user = auth.currentUser;
-    if (!user) return;
-
-    // Update Firestore
-    await updateDoc(doc(db, 'users', user.uid, 'goals', goal.id), {
-      completed: false,
+    const updatedGoal = {
+      ...goal,
+      completed: 0,
       completedAt: null,
-    });
+    };
 
-    // Update local state
-    setGoal({ ...goal, completed: false, completedAt: null });
-    console.log(`Goal ${goal.title} marked as active again.`);
+    setGoal(updatedGoal);
+
+    await saveGoal(updatedGoal);
+
+    addOrUpdateGoal(updatedGoal);
+
   } catch (error) {
     console.error('Error undoing goal completion:', error);
   }
 };
 
-const formatGoalDate = (date: any) => {
-  if (!date) return '—';
+const formatGoalDate = (timestamp?: number | null) => {
+  if (!timestamp) return '—';
 
-  // Firestore Timestamp
-  if (date.seconds) return new Date(date.seconds * 1000).toLocaleDateString(undefined, { year:'numeric', month:'short', day:'numeric' });
-
-  // JS Date object
-  if (date instanceof Date) return date.toLocaleDateString(undefined, { year:'numeric', month:'short', day:'numeric' });
-
-  return '—';
+  return new Date(timestamp).toLocaleDateString(undefined, {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+  });
 };
 
 
@@ -251,7 +230,7 @@ return (
             <Ionicons name="chevron-back" size={24} color="#fff" />
           </Pressable>
         ),
-        title: '',
+        title: 'Goal',
         headerBackTitle: '',
         headerBackTitleVisible: false,
         headerTintColor: '#fff',
@@ -370,7 +349,7 @@ return (
                 <Pressable
                   onPress={() => {
                     setDeleteVisible(false);
-                    deleteGoal(goal.id); // removeGoalFromDb();
+                    confirmDeleteGoal(goal.id); // removeGoalFromDb();
                   }}
                 >
                   <Text style={styles.deleteConfirmText}>Delete</Text>
@@ -426,9 +405,9 @@ return (
             : '—'}
         </Text>
 
-        {goal.completedAt && (
+        {(goal.updatedAt && goal.completed == 1) && (
           <Text style={styles.greenSubTitle}>
-            Completed: {formatGoalDate(goal.completedAt)}
+            Completed: {formatGoalDate(goal.updatedAt)}
           </Text>
         )}
 
@@ -564,7 +543,7 @@ return (
           origin={{ x: -10, y: 0 }}
           fadeOut
           explosionSpeed={350}
-          fallSpeed={3000}
+          fallSpeed={2000}
         />
       )}
     {/* </SafeAreaView> */}

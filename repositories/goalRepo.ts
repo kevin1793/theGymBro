@@ -11,6 +11,7 @@ export type Goal = {
   completed: 0 | 1;
   createdAt: number;
   updatedAt: number;
+  completedAt?: number | null;
   secondaryValue?: number | null;
   secondaryUnit?: string | null;
   goalType?: string | null;

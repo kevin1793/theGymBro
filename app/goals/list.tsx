@@ -1,9 +1,8 @@
-import { auth, db } from '@/lib/firebase';
-import { formatTime } from '@/utils/helper'; // helper to format time units
+import { formatTime } from '@/utils/helper';
 import { Ionicons } from '@expo/vector-icons';
 import { Stack, useFocusEffect, useRouter } from 'expo-router';
-import { collection, getDocs } from 'firebase/firestore';
 import { useCallback, useState } from 'react';
+import { GoalType } from '../../repositories/goalRepo';
 
 import {
   ActivityIndicator,
@@ -14,82 +13,45 @@ import {
   View,
 } from 'react-native';
 
+import { getAll } from '../../database/db';
 
-type Goal = {
-  id: string;
-  title: string;
-  exercise: string;
-  unit: string;
-  startValue: number;
-  currentValue: number;
-  targetValue: number;
-  completed?: boolean;
-  completedAt?: any;
-};
+type Goal = GoalType;
 
 export default function GoalsList() {
   const router = useRouter();
   const [goals, setGoals] = useState<Goal[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // useEffect(() => {
-  //   const fetchGoals = async () => {
-  //     try {
-  //       const uid = auth.currentUser?.uid;
-  //       if (!uid) return;
-
-  //       const snapshot = await getDocs(collection(db, 'users', uid, 'goals'));
-  //       const goalsList = snapshot.docs.map(doc => ({
-  //         id: doc.id,
-  //         ...doc.data(),
-  //       })) as Goal[];
-
-  //       // Sort newest first
-  //       setGoals(goalsList.reverse());
-  //     } catch (error) {
-  //       console.error('Error fetching goals:', error);
-  //     } finally {
-  //       setLoading(false);
-  //     }
-  //   };
-
-  //   fetchGoals();
-  // }, []);
-
   useFocusEffect(
-  useCallback(() => {
-    let isActive = true; // flag to avoid setting state if unmounted
+    useCallback(() => {
+      let isActive = true;
 
-    const fetchGoals = async () => {
-      try {
-        setLoading(true);
-        const uid = auth.currentUser?.uid;
-        if (!uid) return;
+      const fetchGoals = async () => {
+        try {
+          setLoading(true);
 
-        const snapshot = await getDocs(collection(db, 'users', uid, 'goals'));
-        const goalsList = snapshot.docs.map(doc => ({
-          id: doc.id,
-          ...doc.data(),
-        })) as Goal[];
+          const goalsList = await getAll<Goal>(
+            `SELECT * FROM goals ORDER BY createdAt DESC`
+          );
 
-        if (isActive) {
-          setGoals(goalsList.reverse());
+          if (isActive) {
+            setGoals(goalsList);
+          }
+
+        } catch (error) {
+          console.error('Error fetching goals from SQLite:', error);
+        } finally {
+          if (isActive) setLoading(false);
         }
-      } catch (error) {
-        console.error('Error fetching goals:', error);
-      } finally {
-        if (isActive) setLoading(false);
-      }
-    };
+      };
 
-    fetchGoals();
+      fetchGoals();
 
-    return () => {
-      isActive = false; // cleanup
-    };
-  }, [])
-);
-
+      return () => {
+        isActive = false;
+      };
+    }, [])
+  );
 
   const activeGoals = goals.filter(goal => !goal.completed);
   const completedGoals = goals.filter(goal => goal.completed);
@@ -100,11 +62,13 @@ export default function GoalsList() {
     if (goal.startValue < goal.targetValue) {
       const totalGain = goal.targetValue - goal.startValue;
       const gained = goal.currentValue - goal.startValue;
-      progressPercent = totalGain > 0 ? Math.min((gained / totalGain) * 100, 100) : 0;
+      progressPercent =
+        totalGain > 0 ? Math.min((gained / totalGain) * 100, 100) : 0;
     } else {
       const totalReduction = goal.startValue - goal.targetValue;
       const reduced = goal.startValue - goal.currentValue;
-      progressPercent = totalReduction > 0 ? Math.min((reduced / totalReduction) * 100, 100) : 0;
+      progressPercent =
+        totalReduction > 0 ? Math.min((reduced / totalReduction) * 100, 100) : 0;
     }
 
     return progressPercent;
@@ -121,153 +85,147 @@ export default function GoalsList() {
   return (
     <View style={styles.container}>
       <Stack.Screen
-      options={{
-        headerLeft: () => (
-          <Pressable
-            onPress={() => {
-              if (router.canGoBack()) {
-                router.back(); // normal push stack
-              } else {
-                router.push('/'); // fallback if JS stack is empty
-              }
-            }}
-            style={{ paddingHorizontal: 16 }}
-          >
-            <Ionicons name="chevron-back" size={24} color="#fff" />
-          </Pressable>
-        ),
-        title: '',
-        headerBackTitle: '',
-        headerBackTitleVisible: false,
-        headerTintColor: '#fff',
-        headerStyle: { backgroundColor: '#121212' },
-      }}
-    />
-      {/* <SafeAreaView style={styles.container}> */}
-        <ScrollView contentContainerStyle={{ padding: 20 }}>
-          <Text style={styles.header}>Your Goals</Text>
+        options={{
+          headerLeft: () => (
+            <Pressable
+              onPress={() => {
+                if (router.canGoBack()) {
+                  router.back();
+                } else {
+                  router.push('/');
+                }
+              }}
+              style={{ paddingHorizontal: 16 }}
+            >
+              <Ionicons name="chevron-back" size={24} color="#fff" />
+            </Pressable>
+          ),
+          title: 'Your Goals',
+          headerBackTitle: '',
+          headerBackTitleVisible: false,
+          headerTintColor: '#fff',
+          headerStyle: { backgroundColor: '#121212' },
+        }}
+      />
 
-          {/* ACTIVE GOALS */}
-          <Text style={styles.sectionTitle}>Active</Text>
+      <ScrollView contentContainerStyle={{ padding: 20 }}>
+        {/* <Text style={styles.header}>Your Goals</Text> */}
 
-          {activeGoals.length === 0 ? (
-            <Text style={styles.empty}>No active goals.</Text>
-          ) : (
-            activeGoals.map(goal => {
-              const progress = calculateProgress(goal);
+        {/* ACTIVE GOALS */}
+        <Text style={styles.sectionTitle}>Active</Text>
 
-              return (
-                <Pressable
-                  key={goal.id}
-                  style={styles.card}
-                  onPress={() => router.push(`/goals/${goal.id}`)}
-                >
-                  {/* Top Row */}
-                  <View style={styles.cardHeaderRow}>
-                    <View>
-                      <Text style={styles.cardTitle}>{goal.title}</Text>
-                      <Text style={styles.cardSubtitle}>{goal.exercise}</Text>
-                    </View>
+        {activeGoals.length === 0 ? (
+          <Text style={styles.empty}>No active goals.</Text>
+        ) : (
+          activeGoals.map(goal => {
+            const progress = calculateProgress(goal);
 
-                    {goal.createdAt && (
-                      <Text style={styles.dateText}>
-                        Started: {new Date(goal.createdAt.seconds * 1000).toLocaleDateString()}
-                      </Text>
-                    )}
-                  </View>
-
-                  {/* Values Row */}
-                  <View style={styles.valuesRow}>
-                    <View style={styles.valueBlock}>
-                      <Text style={styles.valueLabel}>Starting</Text>
-                      <Text style={styles.valueText}>
-                        {formatTime(goal.startValue, goal.unit)}
-                      </Text>
-                    </View>
-
-                    <View style={styles.valueBlock}>
-                      <Text style={styles.valueLabel}>Current</Text>
-                      <Text style={styles.valueText}>
-                        {formatTime(goal.currentValue, goal.unit)}
-                      </Text>
-                    </View>
-
-                    <View style={styles.valueBlock}>
-                      <Text style={styles.valueLabel}>Target</Text>
-                      <Text style={styles.valueText}>
-                        {formatTime(goal.targetValue, goal.unit)}
-                      </Text>
-                    </View>
-                  </View>
-
-                  {/* Progress */}
-                  <View style={styles.progressRow}>
-                    <View style={styles.progressBar}>
-                      <View
-                        style={[
-                          styles.progressFill,
-                          { width: `${progress}%` },
-                        ]}
-                      />
-                    </View>
-                    <Text style={styles.progressText}>
-                      {progress.toFixed(0)}%
-                    </Text>
-                  </View>
-                </Pressable>
-              );
-            })
-          )}
-
-          {/* COMPLETED GOALS */}
-          <Text style={[styles.sectionTitle, { marginTop: 40 }]}>
-            Completed
-          </Text>
-
-          {completedGoals.length === 0 ? (
-            <Text style={styles.empty}>No completed goals yet.</Text>
-          ) : (
-            completedGoals.map(goal => (
+            return (
               <Pressable
                 key={goal.id}
-                style={[styles.card, styles.completedCard]}
+                style={styles.card}
                 onPress={() => router.push(`/goals/${goal.id}`)}
               >
-                <View style={styles.topRow}>
-                  {/* Left: Title + Exercise */}
-                  <View style={styles.leftColumn}>
+                <View style={styles.cardHeaderRow}>
+                  <View>
                     <Text style={styles.cardTitle}>{goal.title}</Text>
                     <Text style={styles.cardSubtitle}>{goal.exercise}</Text>
                   </View>
 
-                  {/* Right: Started + Completed + Target */}
-                  {(goal.createdAt && goal.completedAt) && (
-                    <View style={styles.rightColumn}>
-                      <View style={styles.dateHeaderRow}>
-                        <Text style={styles.dateLabel}>Started</Text>
-                        <Text style={styles.completedDateLabel}>Completed</Text>
-                        <Text style={styles.targetLabel}>Target</Text>
-                      </View>
-
-                      <View style={styles.dateValueRow}>
-                        <Text style={styles.dateValue}>
-                          {new Date(goal.createdAt.seconds * 1000).toLocaleDateString()}
-                        </Text>
-                        <Text style={styles.dateValue}>
-                          {new Date(goal.completedAt.seconds * 1000).toLocaleDateString()}
-                        </Text>
-                        <Text style={styles.dateValue}>
-                          {formatTime(goal.targetValue, goal.unit)}
-                        </Text>
-                      </View>
-                    </View>
+                  {goal.createdAt && (
+                    <Text style={styles.dateText}>
+                      Started: {new Date(goal.createdAt).toLocaleDateString()}
+                    </Text>
                   )}
                 </View>
+
+                <View style={styles.valuesRow}>
+                  <View style={styles.valueBlock}>
+                    <Text style={styles.valueLabel}>Starting</Text>
+                    <Text style={styles.valueText}>
+                      {formatTime(goal.startValue, goal.unit)}
+                    </Text>
+                  </View>
+
+                  <View style={styles.valueBlock}>
+                    <Text style={styles.valueLabel}>Current</Text>
+                    <Text style={styles.valueText}>
+                      {formatTime(goal.currentValue, goal.unit)}
+                    </Text>
+                  </View>
+
+                  <View style={styles.valueBlock}>
+                    <Text style={styles.valueLabel}>Target</Text>
+                    <Text style={styles.valueText}>
+                      {formatTime(goal.targetValue, goal.unit)}
+                    </Text>
+                  </View>
+                </View>
+
+                <View style={styles.progressRow}>
+                  <View style={styles.progressBar}>
+                    <View
+                      style={[
+                        styles.progressFill,
+                        { width: `${progress}%` },
+                      ]}
+                    />
+                  </View>
+                  <Text style={styles.progressText}>
+                    {progress.toFixed(0)}%
+                  </Text>
+                </View>
               </Pressable>
-            ))
-          )}
-        </ScrollView>
-      {/* </SafeAreaView> */}
+            );
+          })
+        )}
+
+        {/* COMPLETED GOALS */}
+        <Text style={[styles.sectionTitle, { marginTop: 20 }]}>
+          Completed
+        </Text>
+
+        {completedGoals.length === 0 ? (
+          <Text style={styles.empty}>No completed goals yet.</Text>
+        ) : (
+          completedGoals.map(goal => (
+            <Pressable
+              key={goal.id}
+              style={[styles.card, styles.completedCard]}
+              onPress={() => router.push(`/goals/${goal.id}`)}
+            >
+              <View style={styles.topRow}>
+                <View style={styles.leftColumn}>
+                  <Text style={styles.cardTitle}>{goal.title}</Text>
+                  <Text style={styles.cardSubtitle}>{goal.exercise}</Text>
+                </View>
+
+                {(goal.createdAt && goal.completed) && (
+                  <View style={styles.rightColumn}>
+                    <View style={styles.dateHeaderRow}>
+                      <Text style={styles.dateLabel}>Started</Text>
+                      <Text style={styles.completedDateLabel}>Completed</Text>
+                      <Text style={styles.targetLabel}>Target</Text>
+                    </View>
+
+                    <View style={styles.dateValueRow}>
+                      <Text style={styles.dateValue}>
+                        {new Date(goal.createdAt).toLocaleDateString()}
+                      </Text>
+                      <Text style={styles.dateValue}>
+                        {new Date(goal.updatedAt).toLocaleDateString()}
+                      </Text>
+                      <Text style={styles.dateValue}>
+                        {formatTime(goal.targetValue, goal.unit)}
+                      </Text>
+                    </View>
+                  </View>
+                )}
+              </View>
+            </Pressable>
+          ))
+        )}
+      </ScrollView>
     </View>
   );
 }
@@ -314,6 +272,8 @@ const styles = StyleSheet.create({
   completedCard: {
     borderColor: '#4CAF50',
     borderWidth: 1,
+    padding: 20,
+    paddingBottom: 15,
   },
 
   cardTitle: {
@@ -424,13 +384,13 @@ const styles = StyleSheet.create({
   dateHeaderRow: {
   flexDirection: 'row',
   justifyContent: 'space-between',
-  width: 220, // wider to fit three items
+  width: 160, // wider to fit three items
 },
 
 dateValueRow: {
   flexDirection: 'row',
   justifyContent: 'space-between',
-  width: 220, // match header
+  width: 160, // match header
   marginTop: 4,
 },
 
