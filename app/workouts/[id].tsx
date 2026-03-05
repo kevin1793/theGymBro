@@ -1,7 +1,8 @@
-import { auth, db } from '@/lib/firebase';
+// import { getDb } from '@/lib/db';
+
+import { deleteWorkout } from '@/repositories/workoutRepo';
 import { Ionicons } from '@expo/vector-icons';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
-import { deleteDoc, doc, getDoc, updateDoc } from 'firebase/firestore';
 import React, { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
@@ -13,15 +14,18 @@ import {
   View
 } from 'react-native';
 import ConfettiCannon from 'react-native-confetti-cannon';
+import { useWorkouts } from '../../context/WorkoutsContext';
+import { getAll, getOne } from '../../database/db'; // Import the getOne function to fetch a single record from SQLite
+
 
 type SetType = {
   id: string;
   type: 'warmup' | 'working';
-  reps?: number;
-  weight?: number;
-  distance?: number;
-  minutes?: number;
-  seconds?: number;
+  reps?: string;
+  weight?: string;
+  distance?: string;
+  minutes?: string;
+  seconds?: string;
 };
 
 type ExerciseType = {
@@ -36,9 +40,9 @@ type WorkoutType = {
   title: string;
   description?: string;
   exercises: ExerciseType[];
-  createdAt: any;
+  createdAt: number;
   completed?: boolean;
-  completedAt?: any;
+  completedAt?: number;
 };
 
 export default function WorkoutView() {
@@ -46,33 +50,64 @@ export default function WorkoutView() {
   const router = useRouter();
   const [workout, setWorkout] = useState<WorkoutType | null>(null);
   const [loading, setLoading] = useState(true);
-  const [updating, setUpdating] = useState(false);
   const [deleteVisible, setDeleteVisible] = useState(false);
   const [showConfetti, setShowConfetti] = useState(false);
+  const { removeWorkout } = useWorkouts();
 
-  useEffect(() => {
+  // const db = getDb();
+
+  useEffect( () => {
     const fetchWorkout = async () => {
       if (!id) return;
-      try {
-        const user = auth.currentUser;
-        if (!user) return;
+        try {
+          setLoading(true);
+          // SQLite Query
+          const data = await getOne<WorkoutType>(`SELECT * FROM workouts WHERE id = ?`, [id]);
 
-        const workoutDoc = await getDoc(doc(db, 'users', user.uid, 'workouts', id));
-        if (workoutDoc.exists()) {
-          const data = workoutDoc.data() as WorkoutType;
-          setWorkout({ id: workoutDoc.id, ...data });
-        } else {
-          setWorkout(null);
+          if (data) {
+            // Fetch exercises for this workout
+            const exercises: ExerciseType[] = await getAll<ExerciseType>(
+              `SELECT * FROM exercises WHERE workoutId = ?`,
+              [data.id]
+            );
+
+            // Fetch sets for each exercise
+            for (let ex of exercises) {
+              const sets: SetType[] = await getAll<SetType>(
+                `SELECT * FROM sets WHERE exerciseId = ?`,
+                [ex.id]
+              );
+
+              // Map sets to correct shape
+              ex.sets = sets.map(set => ({
+                ...set,
+                reps: set.reps?.toString(),
+                weight: set.weight?.toString(),
+                distance: set.distance?.toString(),
+                minutes: set.minutes?.toString(),
+                seconds: set.seconds?.toString(),
+                type: set.type || 'working',
+              }));
+            }
+
+            // Set the workout state with nested exercises and sets
+            setWorkout({
+              ...data,
+              exercises,
+            });
+            console.log('Fetched workout from SQLite:', workout);
+          } else {
+            setWorkout(null);
+          }
+        } catch (error) {
+          console.error('Error fetching workout from SQLite:', error);
+        } finally {
+          setLoading(false);
         }
-      } catch (error) {
-        console.error('Error fetching workout:', error);
-        setWorkout(null);
-      } finally {
-        setLoading(false);
-      }
-    };
-    fetchWorkout();
-  }, [id]);
+      };
+
+      fetchWorkout();
+    }, [id]);
 
   if (loading) {
     return (
@@ -90,59 +125,24 @@ export default function WorkoutView() {
     );
   }
 
-  const completeWorkout = async () => {
-    if (!workout) return;
-    try {
-      const user = auth.currentUser;
-      if (!user) return;
-
-      const updatedWorkout = { ...workout, completed: true, completedAt: new Date() };
-      setWorkout(updatedWorkout);
-      await updateDoc(doc(db, 'users', user.uid, 'workouts', workout.id), updatedWorkout);
-
-      setShowConfetti(true);
-      setTimeout(() => setShowConfetti(false), 3500);
-    } catch (error) {
-      console.error('Error completing workout:', error);
-    }
-  };
-
-  const undoCompleteWorkout = async () => {
-    if (!workout) return;
-    try {
-      const user = auth.currentUser;
-      if (!user) return;
-      const updatedWorkout = { ...workout, completed: false, completedAt: null };
-      setWorkout(updatedWorkout);
-      await updateDoc(doc(db, 'users', user.uid, 'workouts', workout.id), updatedWorkout);
-    } catch (error) {
-      console.error('Error undoing completion:', error);
-    }
-  };
-
-  const removeWorkout = async () => {
-    if (!workout) return;
-    try {
-      const user = auth.currentUser;
-      if (!user) return;
-      await deleteDoc(doc(db, 'users', user.uid, 'workouts', workout.id));
-      router.back();
-    } catch (error) {
-      console.error('Error deleting workout:', error);
-    }
-  };
-
   // Totals
   let totalReps = 0;
   let totalVolume = 0;
   let totalDistance = 0;
   let totalTime = 0;
+
   workout.exercises.forEach(ex => {
     ex.sets.forEach(set => {
-      totalReps += typeof set.reps === 'string' ? (parseInt(set.reps) || 0) : set.reps || 0;
-      totalVolume += (set.reps || 0) * (set.weight || 0);
-      totalDistance += set.distance || 0;
-      totalTime += ((set.minutes || 0) * 60 + (set.seconds || 0));
+      const reps = parseInt(set.reps || '0');
+      const weight = parseInt(set.weight || '0');
+      const distance = parseInt(set.distance || '0');
+      const minutes = parseInt(set.minutes || '0');
+      const seconds = parseInt(set.seconds || '0');
+
+      totalReps += reps;
+      totalVolume += reps * weight;
+      totalDistance += distance;
+      totalTime += minutes * 60 + seconds;
     });
   });
 
@@ -159,6 +159,23 @@ export default function WorkoutView() {
 
   const userWeightUnit = 'lbs';
   const userDistanceUnit = 'miles';
+
+const removeWorkoutKickOff = async () => {
+  if (!workout?.id) return;
+
+  try {
+    await deleteWorkout(workout.id);
+
+    // Refetch updated workouts
+    // const updatedWorkouts = await getWorkoutsWithRelations();
+    removeWorkout(workout.id); // update context
+    // setWorkouts(updatedWorkouts); // update the state in your main page
+
+    router.back();
+  } catch (error) {
+    console.error('Error deleting workout from SQLite:', error);
+  }
+};
 
   return (
     <View style={styles.container}>
@@ -177,21 +194,30 @@ export default function WorkoutView() {
 
       <ScrollView contentContainerStyle={styles.content}>
         <Text style={styles.title}>{workout.title}</Text>
-        {workout.description ? <Text style={styles.subTitle}>{workout.description}</Text> : null}
+        {workout.description && <Text style={styles.subTitle}>{workout.description}</Text>}
         <Text style={styles.subTitle}>
-          Created: {workout.createdAt?.seconds ? new Date(workout.createdAt.seconds*1000).toLocaleDateString() : '—'}
+          Created: {new Date(workout.createdAt).toLocaleDateString()}
         </Text>
-        {workout.completedAt && <Text style={styles.greenSubTitle}>Completed: {new Date(workout.completedAt.seconds*1000).toLocaleDateString()}</Text>}
+        {workout.completedAt && (
+          <Text style={styles.greenSubTitle}>
+            Completed: {new Date(workout.completedAt).toLocaleDateString()}
+          </Text>
+        )}
 
         {workout.exercises.map(ex => (
           <View key={ex.id} style={styles.exerciseCard}>
             <Text style={styles.exerciseTitle}>{ex.name} ({ex.category})</Text>
             {ex.sets.map(set => (
               <View key={set.id} style={styles.setRow}>
-                {set.reps != null && <Text style={styles.setInfo}>Reps: {set.reps}</Text>}
-                {set.weight != null && <Text style={styles.setInfo}>Weight: {set.weight} {userWeightUnit}</Text>}
-                {set.distance != null && <Text style={styles.setInfo}>Distance: {set.distance} {userDistanceUnit}</Text>}
-                {(set.minutes != null || set.seconds != null) && <Text style={styles.setInfo}>Time: {formatHMS((set.minutes||0)*60 + (set.seconds||0))}</Text>}
+                <Text style={styles.setInfo}>Type: {set.type}</Text>
+                {set.reps && <Text style={styles.setInfo}>Reps: {set.reps}</Text>}
+                {set.weight && <Text style={styles.setInfo}>Weight: {set.weight} {userWeightUnit}</Text>}
+                {set.distance && <Text style={styles.setInfo}>Distance: {set.distance} {userDistanceUnit}</Text>}
+                {(set.minutes || set.seconds) && (
+                  <Text style={styles.setInfo}>
+                    Time: {formatHMS((parseInt(set.minutes || '0') * 60) + parseInt(set.seconds || '0'))}
+                  </Text>
+                )}
               </View>
             ))}
           </View>
@@ -204,17 +230,6 @@ export default function WorkoutView() {
           {totalDistance > 0 && <Text style={styles.totalText}>Total Distance: {totalDistance} {userDistanceUnit}</Text>}
           {totalTime > 0 && <Text style={styles.totalText}>Total Time: {formatHMS(totalTime)}</Text>}
         </View>
-
-        {/* Complete / Undo */}
-        {!workout.completed ? (
-          <Pressable style={styles.completeButton} onPress={completeWorkout}>
-            <Text style={styles.completeText}>Complete Workout</Text>
-          </Pressable>
-        ) : (
-          <Pressable style={[styles.completeButton, styles.undoButton]} onPress={undoCompleteWorkout}>
-            <Text style={styles.undoText}>Undo Completion</Text>
-          </Pressable>
-        )}
       </ScrollView>
 
       {/* Trash at bottom */}
@@ -231,18 +246,21 @@ export default function WorkoutView() {
               <Text style={styles.modalTitle}>Delete Workout?</Text>
               <View style={styles.modalButtons}>
                 <Pressable onPress={() => setDeleteVisible(false)}><Text style={styles.cancelText}>Cancel</Text></Pressable>
-                <Pressable onPress={removeWorkout}><Text style={styles.deleteConfirmText}>Delete</Text></Pressable>
+                <Pressable onPress={removeWorkoutKickOff}><Text style={styles.deleteConfirmText}>Delete</Text></Pressable>
               </View>
             </View>
           </View>
         </Modal>
       )}
 
-      {showConfetti && <ConfettiCannon count={200} origin={{ x: -10, y: 0 }} fadeOut explosionSpeed={350} fallSpeed={3000} />}
+      {showConfetti && (
+        <ConfettiCannon count={200} origin={{ x: -10, y: 0 }} fadeOut explosionSpeed={350} fallSpeed={3000} />
+      )}
     </View>
   );
 }
 
+// Keep the same styles as before
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#121212' },
   loadingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#121212' },
@@ -257,10 +275,6 @@ const styles = StyleSheet.create({
   setInfo: { color: '#ccc', fontSize: 14 },
   totalsRow: { marginTop: 20 },
   totalText: { color: '#fff', fontSize: 16, marginBottom: 4 },
-  completeButton: { marginTop: 30, borderColor: '#4CAF50', borderWidth: 1, paddingVertical: 14, paddingHorizontal: 30, borderRadius: 25, alignItems: 'center', alignSelf: 'center' },
-  completeText: { color: '#4CAF50', fontWeight: '700', fontSize: 16 },
-  undoButton: { borderColor: '#EF5350', backgroundColor: 'transparent', marginTop: 30 },
-  undoText: { color: '#EF5350', fontWeight: '700', fontSize: 16 },
   bottomBar: { position: 'absolute', bottom: 0, left: 0, right: 0, backgroundColor: '#1f1f1f', paddingVertical: 20, alignItems: 'center', borderTopWidth: 1, borderTopColor: '#333' },
   trashButton: { padding: 10 },
   modalOverlay: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.6)' },

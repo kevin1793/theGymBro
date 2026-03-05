@@ -1,20 +1,61 @@
-import { getAll } from '@/database/db';
+import { getAll, run } from '@/database/db';
 
-export async function getWorkoutsWithRelations() {
-  const workouts = await getAll(`SELECT * FROM workouts ORDER BY date DESC`);
+export type Workout = {
+  id: string;
+  title: string;
+  description?: string;
+  createdAt: number;
+  exercises?: Exercise[];
+};
+
+export type Exercise = {
+  id: string;
+  workoutId: string;
+  name: string;
+  sets?: Set[];
+};
+
+export type Set = {
+  id: string;
+  exerciseId: string;
+  reps?: number;
+  weight?: number;
+  distance?: number;
+  minutes?: number;
+  seconds?: number;
+  type: 'warmup' | 'working';
+};
+
+export async function deleteWorkout(id: string) {
+  // First delete all sets for exercises belonging to this workout
+  await run(
+    `DELETE FROM sets WHERE exerciseId IN (SELECT id FROM exercises WHERE workoutId = ?)`,
+    [id]
+  );
+
+  // Then delete all exercises belonging to this workout
+  await run(`DELETE FROM exercises WHERE workoutId = ?`, [id]);
+
+  // Finally delete the workout itself
+  await run(`DELETE FROM workouts WHERE id = ?`, [id]);
+}
+
+export async function getWorkoutsWithRelations(): Promise<Workout[]> {
+  const workouts = await getAll<Workout>(
+    `SELECT * FROM workouts ORDER BY createdAt DESC`
+  );
 
   for (const workout of workouts) {
-    const exercises = await getAll(
+    const exercises = await getAll<Exercise>(
       `SELECT * FROM exercises WHERE workoutId = ?`,
       [workout.id]
     );
 
-    for (const ex of exercises) {
-      const sets = await getAll(
+    for (const exercise of exercises) {
+      exercise.sets = await getAll<Set>(
         `SELECT * FROM sets WHERE exerciseId = ?`,
-        [ex.id]
+        [exercise.id]
       );
-      ex.sets = sets;
     }
 
     workout.exercises = exercises;
@@ -22,27 +63,3 @@ export async function getWorkoutsWithRelations() {
 
   return workouts;
 }
-
-// CREATE TABLE workouts (
-//   id TEXT PRIMARY KEY,
-//   title TEXT,
-//   description TEXT,
-//   date INTEGER
-// );
-
-// CREATE TABLE workouts (
-//   id TEXT PRIMARY KEY,
-//   title TEXT,
-//   description TEXT,
-//   date INTEGER
-// );
-
-// CREATE TABLE sets (
-//   id TEXT PRIMARY KEY,
-//   exerciseId TEXT,
-//   reps INTEGER,
-//   weight REAL,
-//   distance REAL,
-//   minutes INTEGER,
-//   seconds INTEGER
-// );

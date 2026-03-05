@@ -144,6 +144,7 @@ const saveEditedValue = async (newSeconds: number) => {
 
   setEditTimeVisible(false);
   await changeCurrentValue(numeric - goal.currentValue);
+  setEditVisible(false);
 };
 
 const completeGoalKickOff = async () => {
@@ -266,7 +267,7 @@ return (
                   <Text style={styles.cancelText}>Cancel</Text>
                 </Pressable>
 
-                <Pressable onPress={saveEditedValue}>
+                <Pressable onPress={() => saveEditedValue(editValue as any)}>
                   <Text style={styles.saveText}>Save</Text>
                 </Pressable>
               </View>
@@ -349,7 +350,7 @@ return (
                 <Pressable
                   onPress={() => {
                     setDeleteVisible(false);
-                    confirmDeleteGoal(goal.id); // removeGoalFromDb();
+                    confirmDeleteGoal(goal.id);
                   }}
                 >
                   <Text style={styles.deleteConfirmText}>Delete</Text>

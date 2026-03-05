@@ -42,6 +42,17 @@ export async function initDatabase() {
       createdAt INTEGER,
       updatedAt INTEGER
     );
+    CREATE TABLE IF NOT EXISTS sets (
+      id TEXT PRIMARY KEY NOT NULL,
+      exerciseId TEXT,
+      reps INTEGER,
+      weight REAL,
+      distance REAL,
+      minutes INTEGER,
+      seconds INTEGER,
+      type TEXT,
+      FOREIGN KEY(exerciseId) REFERENCES exercises(id) ON DELETE CASCADE
+    );
   `);
 
   try {
@@ -49,6 +60,21 @@ export async function initDatabase() {
     console.log("Migration: Added isDirty column to users.");
   } catch (e) {
     // If the column already exists, SQLite will throw an error. We safely ignore it.
+  }
+
+  try {
+    await db.execAsync(`ALTER TABLE sets ADD COLUMN type TEXT;`);
+    console.log("Migration: Added 'type' column to sets table.");
+  } catch (e) {
+    console.log("Column 'type' already exists, skipping migration.");
+  }
+
+  try {
+    await db.execAsync(`ALTER TABLE workouts ADD COLUMN createdAt INTEGER;`);
+    await db.execAsync(`ALTER TABLE workouts ADD COLUMN updatedAt INTEGER;`);
+    console.log('Migration: Added createdAt/updatedAt to workouts.');
+  } catch (e) {
+    // ignore errors if column already exists
   }
   
 }

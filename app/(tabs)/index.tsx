@@ -18,6 +18,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useGoals } from '../../context/GoalsContext';
+import { useWorkouts } from '../../context/WorkoutsContext';
 
 
 type Workout = {
@@ -29,11 +30,12 @@ type Workout = {
 export default function Home() {
   const router = useRouter();
   const { goals, setGoals } = useGoals(); // get goals from context
+  const { workouts,setWorkouts } = useWorkouts(); // get workouts from context
   const goalList = Array.isArray(goals) ? goals : [];
 
   const [firstName, setFirstName] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
-  const [workouts, setWorkouts] = useState<Workout[]>([]);
+  // const [workouts, setWorkouts] = useState<Workout[]>([]);
 
   useEffect(() => {
     const loadLocalData = async () => {
@@ -48,11 +50,13 @@ export default function Home() {
         // Load goals
         const goalsList = await getActiveGoals();
         setGoals(goalsList);
-        console.log('Loaded goals from local DB:', goalsList);
+        
 
         // Load workouts
         const workoutsList = await getWorkoutsWithRelations();
         setWorkouts(workoutsList);
+
+        console.log('Loaded workoutsList from local DB:', workoutsList);
 
         // Load user
         let user = await getUser(uid);

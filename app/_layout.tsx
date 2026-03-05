@@ -9,6 +9,7 @@ import { runMigrations } from '@/database/migrations';
 import { useEffect, useState } from 'react';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { GoalsProvider } from '../context/GoalsContext';
+import { WorkoutsProvider } from '../context/WorkoutsContext'; // ✅ Import your WorkoutsProvider
 
 export const unstable_settings = {
   anchor: '(tabs)',
@@ -38,14 +39,16 @@ export default function RootLayout() {
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
       <GoalsProvider>
-        <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
-          <Stack>
-            <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-            <Stack.Screen name="modal" options={{ presentation: 'modal', title: 'Modal' }} />
-        </Stack>
-        <StatusBar style="auto" />
-      </ThemeProvider>
-    </GoalsProvider>
+        <WorkoutsProvider>
+          <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
+            <Stack>
+              <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+              <Stack.Screen name="modal" options={{ presentation: 'modal', title: 'Modal' }} />
+            </Stack>
+            <StatusBar style="auto" />
+          </ThemeProvider>
+        </WorkoutsProvider>
+      </GoalsProvider>
     </GestureHandlerRootView>
   );
 }

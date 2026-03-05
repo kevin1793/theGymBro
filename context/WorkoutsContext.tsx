@@ -1,12 +1,11 @@
 import React, { createContext, ReactNode, useContext, useState } from 'react';
 
-export type SetType = {
-  reps?: string;
-  weight?: string;
-  distance?: string;
-  minutes?: string;
-  seconds?: string;
-  type: 'warmup' | 'working';
+export type WorkoutType = {
+  id: string;
+  title: string;
+  description?: string;
+  exercises: ExerciseType[];
+  createdAt?: any;
 };
 
 export type ExerciseType = {
@@ -15,12 +14,13 @@ export type ExerciseType = {
   sets: SetType[];
 };
 
-export type WorkoutType = {
-  id: string;
-  title: string;
-  description?: string;
-  exercises: ExerciseType[];
-  createdAt?: any;
+export type SetType = {
+  reps?: string;
+  weight?: string;
+  distance?: string;
+  minutes?: string;
+  seconds?: string;
+  type: 'warmup' | 'working';
 };
 
 type WorkoutsContextType = {

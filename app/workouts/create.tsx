@@ -1,8 +1,7 @@
 import { exercises } from '@/data/exercises';
-import { auth, db } from '@/lib/firebase';
+import { run } from '@/database/db'; // <-- import SQLite helper
 import { Ionicons } from '@expo/vector-icons';
 import { Stack, useRouter } from 'expo-router';
-import { addDoc, collection, serverTimestamp } from 'firebase/firestore';
 import React, { useMemo, useState } from 'react';
 import {
   FlatList,
@@ -16,6 +15,8 @@ import {
   View,
 } from 'react-native';
 import DraggableFlatList, { RenderItemParams } from 'react-native-draggable-flatlist';
+import { SafeAreaView } from 'react-native-safe-area-context';
+
 
 // Unique ID generator
 const generateID = () => Math.random().toString(36).substring(2, 9);
@@ -195,23 +196,46 @@ export default function CreateWorkout() {
       return;
     }
 
-    const user = auth.currentUser;
-    if (!user) return;
-
     try {
-      await addDoc(collection(db, 'users', user.uid, 'workouts'), {
-        title,
-        description,
-        exercises: workoutExercises,
-        totals,
-        weightUnit: userWeightUnit,
-        distanceUnit: userDistanceUnit,
-        createdAt: serverTimestamp(),
-      });
+      const workoutId = generateID();
+      const now = Date.now();
 
+      // Insert workout
+      await run(
+        `INSERT INTO workouts (id, title, description, date) VALUES (?, ?, ?, ?)`,
+        [workoutId, title, description, now]
+      );
+
+      // Insert exercises and sets
+      for (const ex of workoutExercises) {
+        const exerciseId = generateID();
+
+        await run(
+          `INSERT INTO exercises (id, workoutId, name, category) VALUES (?, ?, ?, ?)`,
+          [exerciseId, workoutId, ex.name, ex.category]
+        );
+
+        for (const set of ex.sets) {
+          await run(
+            `INSERT INTO sets (id, exerciseId, reps, weight, distance, minutes, seconds, type) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+            [
+              generateID(),
+              exerciseId,
+              set.reps ? Number(set.reps) : null,
+              set.weight ? Number(set.weight) : null,
+              set.distance ? Number(set.distance) : null,
+              set.minutes ? Number(set.minutes) : null,
+              set.seconds ? Number(set.seconds) : null,
+              set.type,
+            ]
+          );
+        }
+      }
+
+      // Navigate back after save
       router.replace('/(tabs)');
     } catch (error) {
-      console.log('Error saving workout:', error);
+      console.log('Error saving workout to SQLite:', error);
       alert('Failed to save workout. Please try again.');
     }
   };
@@ -378,7 +402,7 @@ const renderExercise = ({ item, drag, isActive }: RenderItemParams<ExerciseType>
               <Ionicons name="chevron-back" size={24} color="#fff" />
             </Pressable>
           ),
-          title: '',
+          title: 'Create Workout',
           headerBackTitle: '',
           headerBackTitleVisible: false,
           headerTintColor: '#fff',
@@ -392,7 +416,7 @@ const renderExercise = ({ item, drag, isActive }: RenderItemParams<ExerciseType>
         contentContainerStyle={styles.container}
         renderItem={() => (
           <>
-            <Text style={styles.header}>Create Workout</Text>
+            {/* <Text style={styles.header}>Create Workout</Text> */}
 
             <TextInput
               style={styles.input}
@@ -447,7 +471,7 @@ const renderExercise = ({ item, drag, isActive }: RenderItemParams<ExerciseType>
 
             {/* Modal for exercise selection */}
             <Modal visible={modalVisible} animationType="slide">
-              <View style={styles.modalContainer}>
+              <SafeAreaView  style={styles.modalContainer}>
                 <Text style={styles.modalTitle}>Select Exercise</Text>
 
                 <TextInput
@@ -480,7 +504,7 @@ const renderExercise = ({ item, drag, isActive }: RenderItemParams<ExerciseType>
                 >
                   <Text style={{ color: '#fff' }}>Close</Text>
                 </Pressable>
-              </View>
+              </SafeAreaView >
             </Modal>
           </>
         )}
