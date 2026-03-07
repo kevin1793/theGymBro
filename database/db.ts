@@ -72,6 +72,7 @@ export async function initDatabase() {
   try {
     await db.execAsync(`ALTER TABLE workouts ADD COLUMN createdAt INTEGER;`);
     await db.execAsync(`ALTER TABLE workouts ADD COLUMN updatedAt INTEGER;`);
+    await db.execAsync(`ALTER TABLE workouts ADD COLUMN lastCompletedAt INTEGER;`);
     console.log('Migration: Added createdAt/updatedAt to workouts.');
   } catch (e) {
     // ignore errors if column already exists

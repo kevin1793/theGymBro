@@ -202,8 +202,8 @@ export default function CreateWorkout() {
 
       // Insert workout
       await run(
-        `INSERT INTO workouts (id, title, description, date) VALUES (?, ?, ?, ?)`,
-        [workoutId, title, description, now]
+        `INSERT INTO workouts (id, title, description, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?)`,
+        [workoutId, title, description, now,now]
       );
 
       // Insert exercises and sets

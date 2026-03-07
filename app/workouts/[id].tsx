@@ -95,7 +95,7 @@ export default function WorkoutView() {
               ...data,
               exercises,
             });
-            console.log('Fetched workout from SQLite:', workout);
+            console.log('Fetched workout from SQLite:', data);
           } else {
             setWorkout(null);
           }
@@ -196,7 +196,11 @@ const removeWorkoutKickOff = async () => {
         <Text style={styles.title}>{workout.title}</Text>
         {workout.description && <Text style={styles.subTitle}>{workout.description}</Text>}
         <Text style={styles.subTitle}>
-          Created: {new Date(workout.createdAt).toLocaleDateString()}
+          Created: {new Date(workout.createdAt).toLocaleDateString(undefined, {
+                year: 'numeric',
+                month: 'short',
+                day: 'numeric',
+              })}
         </Text>
         {workout.completedAt && (
           <Text style={styles.greenSubTitle}>

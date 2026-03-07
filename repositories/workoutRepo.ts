@@ -5,6 +5,8 @@ export type Workout = {
   title: string;
   description?: string;
   createdAt: number;
+  updatedAt: number;
+  lastCompletedAt?: number | null;
   exercises?: Exercise[];
 };
 
@@ -62,4 +64,23 @@ export async function getWorkoutsWithRelations(): Promise<Workout[]> {
   }
 
   return workouts;
+}
+
+export async function deleteBrokenWorkouts() {
+  try {
+    // This covers: 
+    // 1. IS NULL
+    // 2. Empty strings ''
+    // 3. The literal string 'undefined' (if it was accidentally saved as a string)
+    await run(`
+      DELETE FROM workouts 
+      WHERE id IS NULL 
+      OR id = '' 
+      OR id = 'undefined' 
+      OR createdAt = null
+    `);
+    console.log("Cleanup: Deleted all workouts with invalid IDs.");
+  } catch (error) {
+    console.error("Cleanup failed:", error);
+  }
 }

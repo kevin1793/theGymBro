@@ -3,11 +3,11 @@ import ProgressTracker from '@/components/WeeklyTracker';
 import { auth, db } from '@/lib/firebase';
 import { deleteBrokenGoals, getActiveGoals } from '@/repositories/goalRepo';
 import { getUser, saveUser } from '@/repositories/usersRepo';
-import { getWorkoutsWithRelations } from '@/repositories/workoutRepo';
+import { deleteBrokenWorkouts, getWorkoutsWithRelations } from '@/repositories/workoutRepo';
 import { formatTime } from '@/utils/helper';
-import { useRouter } from 'expo-router';
+import { useFocusEffect, useRouter } from 'expo-router';
 import { doc, getDoc } from 'firebase/firestore';
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   Pressable,
@@ -37,9 +37,21 @@ export default function Home() {
   const [loading, setLoading] = useState(true);
   // const [workouts, setWorkouts] = useState<Workout[]>([]);
 
+  useFocusEffect(
+    useCallback(() => {
+      const cleanup = async () => {
+        await deleteBrokenGoals();
+        await deleteBrokenWorkouts();
+      };
+
+      cleanup();
+    }, [])
+);
+
   useEffect(() => {
     const loadLocalData = async () => {
       await deleteBrokenGoals(); // Run cleanup
+      await deleteBrokenWorkouts(); // Run cleanup
 
       setLoading(true);
 
