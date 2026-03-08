@@ -66,6 +66,13 @@ export async function getWorkoutsWithRelations(): Promise<Workout[]> {
   return workouts;
 }
 
+export const getWeeklyCompletions = async (startTimestamp: number) => {
+  return await getAll(
+    `SELECT createdAt FROM workout_history WHERE createdAt >= ?`,
+    [startTimestamp]
+  );
+};
+
 export async function deleteBrokenWorkouts() {
   try {
     // This covers: 

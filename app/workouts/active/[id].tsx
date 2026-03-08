@@ -1,6 +1,7 @@
 import { AppModal } from '@/components/AppModal';
-import { getAll, getOne } from '@/database/db';
+import { getAll, getOne, run } from '@/database/db';
 import { Ionicons } from '@expo/vector-icons';
+import * as Crypto from 'expo-crypto'; // For generating history IDs
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useEffect, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
@@ -72,6 +73,9 @@ export default function ActiveWorkout() {
   const [seconds, setSeconds] = useState(0);
   const [isActive, setIsActive] = useState(true);
   const [showConfetti, setShowConfetti] = useState(false);
+  const [showWarningModal, setShowWarningModal] = useState(false);
+  const hasStarted = Object.values(completedSets).some(val => val === true);
+
 
   // Modal States
   const [activeModal, setActiveModal] = useState<'reset' | 'cancel' | 'finish' | null>(null);
@@ -102,11 +106,86 @@ export default function ActiveWorkout() {
     return `${Math.floor(s / 3600) > 0 ? Math.floor(s / 3600) + ':' : ''}${mins < 10 ? '0' + mins : mins}:${secs < 10 ? '0' + secs : secs}`;
   };
 
-  const playConfettiAndExit = () => {
-    setActiveModal(null);
-    setShowConfetti(true);
-    setIsActive(false);
-    setTimeout(() => router.replace('/(tabs)'), 2500);
+  const playConfettiAndExit = async () => {
+    try {
+      // Save to DB first
+      await saveWorkoutToHistory();
+
+      // Then show celebration
+      setActiveModal(null);
+      setShowConfetti(true);
+      setIsActive(false);
+      
+      setTimeout(() => {
+        setShowConfetti(false);
+        router.replace('/(tabs)');
+      }, 2500);
+    } catch (e) {
+      alert("Failed to save workout. Please try again.");
+    }
+  };
+
+  const handleFinishPress = () => {
+    // Calculate total sets in the workout template
+    const totalSets = workout.exercises.reduce((acc: number, ex: any) => acc + ex.sets.length, 0);
+    // Count how many sets are actually checked true
+    const completedCount = Object.values(completedSets).filter(val => val).length;
+
+    if (completedCount < totalSets) {
+      setShowWarningModal(true);
+    } else {
+      setActiveModal('finish');
+    }
+  };
+
+
+  const saveWorkoutToHistory = async () => {
+    try {
+      const historyId = Crypto.randomUUID();
+      const now = Date.now();
+      let totalVolume = 0;
+      let totalDistance = 0;
+      let totalReps = 0; // New counter
+
+      workout.exercises.forEach((ex: any) => {
+        ex.sets.forEach((set: any) => {
+          if (completedSets[set.id]) {
+            // 1. Always count reps if they exist
+            const reps = Number(set.reps) || 0;
+            totalReps += reps;
+
+            // 2. Always count distance if it exists
+            const distance = Number(set.distance) || 0;
+            totalDistance += distance;
+
+            // 3. Always count volume if weight exists
+            const weight = Number(set.weight) || 0;
+            totalVolume += (reps * weight);
+            
+            // Log for debugging hybrid sets
+            if (distance > 0 && weight > 0) {
+              console.log(`Hybrid set detected: ${distance}mi and ${reps}x${weight}lbs`);
+            }
+          }
+        });
+      });
+
+
+      console.log(`Final Totals -> Vol: ${totalVolume}, Dist: ${totalDistance}, Reps: ${totalReps}`);
+
+      // Update SQL to include totalReps
+      await run(
+        `INSERT INTO workout_history (id, workoutId, workoutTitle, duration, createdAt, totalVolume, totalDistance, totalReps) 
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        [historyId, workout.id, workout.title, seconds, now, totalVolume, totalDistance, totalReps]
+      );
+
+      await run(`UPDATE workouts SET updatedAt = ? WHERE id = ?`, [now, workout.id]);
+      
+    } catch (error) {
+      console.error("Error saving workout history:", error);
+      throw error; 
+    }
   };
 
   if (!workout) return null;
@@ -160,10 +239,18 @@ export default function ActiveWorkout() {
       </ScrollView>
 
       {!showConfetti && (
-        <Pressable style={styles.finishButton} onPress={() => setActiveModal('finish')}>
+        <Pressable 
+          style={[
+            styles.finishButton, 
+            !hasStarted && { opacity: 0.3 } // Fade out if not started
+          ]} 
+          onPress={handleFinishPress}
+          disabled={!hasStarted} // Disable button interaction
+        >
           <Text style={styles.finishButtonText}>Finish Workout</Text>
         </Pressable>
       )}
+
 
       {/* --- Consolidated Modals --- */}
       <AppModal 
@@ -178,6 +265,20 @@ export default function ActiveWorkout() {
         visible={activeModal === 'finish'} variant="success" title="Awesome work! Save this session?" confirmText="Finish"
         onClose={() => setActiveModal(null)} onConfirm={playConfettiAndExit} 
       />
+      {/* Warning Modal for Unfinished Sets */}
+      <AppModal 
+        visible={showWarningModal} 
+        variant="danger" 
+        title="Unfinished Sets! Unchecked sets will not be recorded. Finish anyway?" 
+        confirmText="Finish Anyway"
+        cancelText="Go Back"
+        onClose={() => setShowWarningModal(false)} 
+        onConfirm={() => {
+          setShowWarningModal(false);
+          setActiveModal('finish'); // Proceed to the final confirmation
+        }} 
+      />
+
 
       {showConfetti && <ConfettiCannon count={200} origin={{ x: -10, y: 0 }} fadeOut fallSpeed={2000} />}
     </View>

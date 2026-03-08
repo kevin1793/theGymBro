@@ -1,82 +1,100 @@
-import React from 'react';
-import { StyleSheet, Text, View } from 'react-native';
-
-// Dummy weekly data
-const weeklyWorkouts = [
-  { day: 'Mon', completed: 1 },
-  { day: 'Tue', completed: 0 },
-  { day: 'Wed', completed: 1 },
-  { day: 'Thu', completed: 1 },
-  { day: 'Fri', completed: 0 },
-  { day: 'Sat', completed: 1 },
-  { day: 'Sun', completed: 0 },
-];
+import { getAll } from '@/database/db'; // Your SQLite helper
+import { Ionicons } from '@expo/vector-icons';
+import { useFocusEffect, useRouter } from 'expo-router';
+import React, { useCallback, useState } from 'react';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 export default function WeeklyTracker() {
+  const router = useRouter();
+  const [completedDays, setCompletedDays] = useState<number[]>([]);
+
+  // --- Logic Constants (Keeping your exact math) ---
   const today = new Date();
-
-  // Get current day index: 0=Sun, 1=Mon ... 6=Sat
   const todayIndex = today.getDay();
-
-  // Map dayOrder to match our weeklyWorkouts: 0=Mon ... 6=Sun
   const dayOrder = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
   const todayAdjusted = todayIndex === 0 ? 6 : todayIndex - 1;
 
-  // Calculate start of week
   const startOfWeek = new Date(today);
+  startOfWeek.setHours(0, 0, 0, 0); // Start at midnight
   startOfWeek.setDate(today.getDate() - todayAdjusted);
 
-  // Calculate week range for header
   const endOfWeek = new Date(startOfWeek);
   endOfWeek.setDate(startOfWeek.getDate() + 6);
+
   const formatDate = (date: Date) => `${date.getMonth() + 1}/${date.getDate()}`;
   const weekRange = `${formatDate(startOfWeek)} - ${formatDate(endOfWeek)}`;
 
-  // Function to get the date number for a day
-  const getDayNumber = (dayIndex: number) => {
-    const dayDate = new Date(startOfWeek);
-    dayDate.setDate(startOfWeek.getDate() + dayIndex);
-    return dayDate.getDate();
-  };
+  // --- Real Data Fetching ---
+  useFocusEffect(
+    useCallback(() => {
+      const fetchHistory = async () => {
+        try {
+          // Query only workouts from this week
+          const history = await getAll<{ createdAt: number }>(
+            `SELECT createdAt FROM workout_history WHERE createdAt >= ?`,
+            [startOfWeek.getTime()]
+          );
+          
+          // Map timestamps to just the date number (e.g., 14, 15, 16)
+          const days = history.map(h => new Date(h.createdAt).getDate());
+          setCompletedDays(days);
+        } catch (e) {
+          console.error("Tracker fetch error:", e);
+        }
+      };
+      fetchHistory();
+    }, [])
+  );
 
   return (
-    <View style={styles.container}>
-      {/* Header with week range */}
+    <Pressable 
+      style={styles.container} 
+      onPress={() => router.push('/workouts/calendar')} // Navigates to month view
+    >
       <View style={styles.headerRow}>
-        <Text style={styles.header}>This Week</Text>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+          <Text style={styles.header}>This Week</Text>
+          <Ionicons name="chevron-forward" size={14} color="#aaa" />
+        </View>
         <Text style={styles.dateRange}>{weekRange}</Text>
       </View>
 
-      {/* Weekly progress */}
       <View style={styles.weeklyContainer}>
-        {weeklyWorkouts.map((w, index) => {
-          const dayJSIndex = dayOrder.indexOf(w.day);
-          const isFuture = dayJSIndex > todayAdjusted;
+        {dayOrder.map((day, index) => {
+          // Get the actual date for this specific column
+          const dayDate = new Date(startOfWeek);
+          dayDate.setDate(startOfWeek.getDate() + index);
+          const dayNumber = dayDate.getDate();
 
-          const dotColor = isFuture ? '#333' : w.completed ? '#4CAF50' : '#555';
+          // Check if today matches this date or if it was completed
+          const isToday = index === todayAdjusted;
+          const isCompleted = completedDays.includes(dayNumber);
+          const isFuture = index > todayAdjusted;
+
+          // Styles (Same as your original logic)
+          const dotColor = isFuture ? '#333' : isCompleted ? '#4CAF50' : '#555';
           const labelColor = isFuture ? '#555' : '#aaa';
 
-          const isToday = dayJSIndex === todayAdjusted;
-
-          // Get day number
-          const dayNumber = getDayNumber(dayJSIndex);
-
           return (
-            <View key={w.day} style={styles.day}>
+            <View key={day} style={styles.day}>
               <Text
                 style={[
                   styles.dayLabel,
-                  { color: labelColor, textDecorationLine: isToday ? 'underline' : 'none' },
+                  { 
+                    color: labelColor, 
+                    textDecorationLine: isToday ? 'underline' : 'none',
+                    fontWeight: isToday ? 'bold' : 'normal' 
+                  },
                 ]}
               >
-                {w.day} ({dayNumber})
+                {day} ({dayNumber})
               </Text>
               <View style={[styles.dot, { backgroundColor: dotColor }]} />
             </View>
           );
         })}
       </View>
-    </View>
+    </Pressable>
   );
 }
 
@@ -91,7 +109,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 8,
+    marginBottom: 12,
   },
   header: {
     color: '#fff',
@@ -111,8 +129,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   dayLabel: {
-    fontSize: 12,
-    marginBottom: 4,
+    fontSize: 11,
+    marginBottom: 6,
   },
   dot: {
     width: 12,

@@ -438,32 +438,55 @@ const handleSaveWorkout = async () => {
     );
   };
 
-  const renderExercise = ({ item, drag, isActive }: RenderItemParams<ExerciseType>) => {
-    const exerciseIndex = workoutExercises.findIndex((e) => e.id === item.id);
+const renderExercise = ({ item, drag, isActive }: RenderItemParams<ExerciseType>) => {
+  const exerciseIndex = workoutExercises.findIndex((e) => e.id === item.id);
+  const isCardioEx = isCardio(item.category);
 
-    return (
-      <Pressable
-        onLongPress={drag}
-        disabled={isActive}
-        style={[styles.exerciseBox, { backgroundColor: isActive ? '#2a2a2a' : '#1a1a1a' }]}
-      >
-        <Text style={styles.exerciseTitle}>{item.name}</Text>
-        {item.sets.map((set, setIndex) => renderSet(set, setIndex, exerciseIndex))}
+  return (
+    <Pressable
+      onLongPress={drag}
+      disabled={isActive}
+      style={[styles.exerciseBox, { backgroundColor: isActive ? '#2a2a2a' : '#1a1a1a' }]}
+    >
+      <Text style={styles.exerciseTitle}>{item.name}</Text>
 
-        <View style={styles.exerciseFooter}>
+      {/* --- Column Labels --- */}
+      {item.sets.length > 0 && (
+        <View style={styles.labelRow}>
+          <Text style={[styles.labelText, { width: 40 }]}>Move</Text>
+          <Text style={[styles.labelText, { width: 50 }]}>Type</Text>
+          
+          {isCardioEx ? (
+            <>
+              <Text style={[styles.labelText, { flex: 1 }]}>Dist</Text>
+              <Text style={[styles.labelText, { flex: 1 }]}>Min</Text>
+              <Text style={[styles.labelText, { flex: 1 }]}>Sec</Text>
+            </>
+          ) : (
+            <>
+              <Text style={[styles.labelText, { flex: 1 }]}>Reps</Text>
+              <Text style={[styles.labelText, { flex: 1 }]}>Weight</Text>
+            </>
+          )}
+          <View style={{ width: 30 }} />
+        </View>
+      )}
+
+      {item.sets.map((set, setIndex) => renderSet(set, setIndex, exerciseIndex))}
+
+      <View style={styles.exerciseFooter}>
         <Pressable onPress={() => addSet(exerciseIndex)}>
-          <Text style={styles.addSetText}>+ Add Set</Text>
+          <Text style={styles.addSetText}>Add Set</Text>
         </Pressable>
-
         <Pressable onPress={() => deleteExercise(exerciseIndex)} style={styles.exerciseTrash}>
-          <Ionicons name="trash-outline" size={16} color="#ff5252" />
+          {/* <Ionicons name="trash-outline" size={16} color="#ff5252" /> */}
           <Text style={{ color: '#ff5252', marginLeft: 6 }}>Delete Exercise</Text>
         </Pressable>
       </View>
+    </Pressable>
+  );
+};
 
-      </Pressable>
-    );
-  };
 
   if (loading) {
     return (
@@ -659,18 +682,6 @@ const styles = StyleSheet.create({
     flex: 1,           // THIS IS KEY: It makes inputs share the remaining space
     marginHorizontal: 4, // Adds spacing between the inputs
   },
-  // addSetText: {
-  //   color: '#4CAF50',
-  //   marginTop: 8,
-  //   fontWeight: '600',
-  // },
-  // exerciseTrash: {
-  //   flexDirection: 'row',
-  //   alignItems: 'center',
-  //   marginTop: 8,
-  //   alignSelf: 'flex-end', // Pushes the whole component to the right
-  // },
-
   exerciseFooter: {
     flexDirection: 'row',
     justifyContent: 'space-between', // This pushes one to the left and one to the right
@@ -747,5 +758,20 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontStyle: 'italic',
   },
+  labelRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 15,
+    paddingHorizontal: 2,
+    marginBottom: -5, // Pulls the inputs closer to the labels
+  },
+  labelText: {
+    color: '#555', // Subdued color
+    fontSize: 10,
+    fontWeight: '800',
+    textTransform: 'uppercase',
+    textAlign: 'center',
+  },
+
 
 });

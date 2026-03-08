@@ -10,6 +10,16 @@ export async function initDatabase() {
   // execAsync is perfect for schema creation
   await db.execAsync(`
     PRAGMA foreign_keys = ON;
+    CREATE TABLE IF NOT EXISTS workout_history (
+      id TEXT PRIMARY KEY NOT NULL,
+      workoutId TEXT,
+      workoutTitle TEXT,
+      duration INTEGER, -- Total seconds from your timer
+      createdAt INTEGER, -- The timestamp for the calendar
+      totalVolume REAL,
+      FOREIGN KEY(workoutId) REFERENCES workouts(id) ON DELETE SET NULL
+    );
+
     CREATE TABLE IF NOT EXISTS users (
       uid TEXT PRIMARY KEY NOT NULL,
       firstName TEXT,
@@ -19,6 +29,7 @@ export async function initDatabase() {
       isDirty INTEGER DEFAULT 0,
       updatedAt INTEGER
     );
+
     CREATE TABLE IF NOT EXISTS goals (
       id TEXT PRIMARY KEY NOT NULL,
       title TEXT,
@@ -35,6 +46,7 @@ export async function initDatabase() {
       secondaryValue REAL,
       secondaryUnit TEXT
     );
+
     CREATE TABLE IF NOT EXISTS workouts (
       id TEXT PRIMARY KEY NOT NULL,
       title TEXT,
@@ -42,6 +54,7 @@ export async function initDatabase() {
       createdAt INTEGER,
       updatedAt INTEGER
     );
+
     CREATE TABLE IF NOT EXISTS sets (
       id TEXT PRIMARY KEY NOT NULL,
       exerciseId TEXT,
@@ -53,7 +66,22 @@ export async function initDatabase() {
       type TEXT,
       FOREIGN KEY(exerciseId) REFERENCES exercises(id) ON DELETE CASCADE
     );
+    
   `);
+  try {
+    await db.execAsync(`ALTER TABLE workout_history ADD COLUMN totalReps INTEGER DEFAULT 0;`);
+    console.log("Migration: Added 'totalReps' to workout_history.");
+  } catch (e) {
+    console.log("'totalReps' column already exists, skipping migration.");
+  }
+  try {
+    // Check if the column exists by attempting to add it
+    // SQLite will throw an error if it already exists, which we catch safely
+    await db.execAsync(`ALTER TABLE workout_history ADD COLUMN totalDistance REAL DEFAULT 0;`);
+    console.log("Migration: Added 'totalDistance' to workout_history.");
+  } catch (e) {
+    console.log("'totalDistance' column already exists or table doesn't exist yet, skipping.");
+  }
 
   try {
     await db.execAsync(`ALTER TABLE users ADD COLUMN isDirty INTEGER DEFAULT 0;`);
@@ -105,3 +133,13 @@ export async function getOne<T = any>(query: string, params: any[] = []): Promis
 export async function run(query: string, params: any[] = []): Promise<void> {
   await db.runAsync(query, params);
 }
+
+export const clearWorkoutHistory = async () => {
+  try {
+    await run(`DELETE FROM workout_history`, []);
+    console.log("Workout history cleared successfully.");
+  } catch (error) {
+    console.error("Error clearing workout history:", error);
+    throw error;
+  }
+};
