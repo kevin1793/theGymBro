@@ -1,6 +1,7 @@
 // import { getDb } from '@/lib/db';
 
 import { deleteWorkout } from '@/repositories/workoutRepo';
+import { formatHMS } from '@/utils/helper';
 import { Ionicons } from '@expo/vector-icons';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useEffect, useState } from 'react';
@@ -146,17 +147,6 @@ export default function WorkoutView() {
     });
   });
 
-  const formatHMS = (seconds: number) => {
-    const h = Math.floor(seconds / 3600);
-    const m = Math.floor((seconds % 3600) / 60);
-    const s = seconds % 60;
-    let str = '';
-    if (h > 0) str += `${h}h `;
-    if (m > 0) str += `${m}m `;
-    if (s > 0) str += `${s}s`;
-    return str.trim() || '0s';
-  };
-
   const userWeightUnit = 'lbs';
   const userDistanceUnit = 'miles';
 
@@ -186,7 +176,7 @@ const removeWorkoutKickOff = async () => {
               <Ionicons name="chevron-back" size={24} color="#fff" />
             </Pressable>
           ),
-          title: '',
+          title: 'Workout',
           headerStyle: { backgroundColor: '#121212' },
           headerTintColor: '#fff',
         }}
@@ -207,39 +197,77 @@ const removeWorkoutKickOff = async () => {
             Completed: {new Date(workout.completedAt).toLocaleDateString()}
           </Text>
         )}
+        
+        {workout.exercises.map(ex => {
+          // Determine if the exercise is a core type
+          const isCore = (category: string) => category.toLowerCase() === 'core';
 
-        {workout.exercises.map(ex => (
-          <View key={ex.id} style={styles.exerciseCard}>
-            <Text style={styles.exerciseTitle}>{ex.name} ({ex.category})</Text>
-            {ex.sets.map(set => (
-              <View key={set.id} style={styles.setRow}>
-                <Text style={styles.setInfo}>Type: {set.type}</Text>
-                {set.reps && <Text style={styles.setInfo}>Reps: {set.reps}</Text>}
-                {set.weight && <Text style={styles.setInfo}>Weight: {set.weight} {userWeightUnit}</Text>}
-                {set.distance && <Text style={styles.setInfo}>Distance: {set.distance} {userDistanceUnit}</Text>}
-                {(set.minutes || set.seconds) && (
-                  <Text style={styles.setInfo}>
-                    Time: {formatHMS((parseInt(set.minutes || '0') * 60) + parseInt(set.seconds || '0'))}
-                  </Text>
-                )}
+          // Determine if the exercise is cardio
+          const isCardio = (category: string) => category.toLowerCase() === 'cardio';
+
+          // Determine if the exercise is strength (anything not core or cardio)
+          const isStrength = (category: string) => !isCore(category) && !isCardio(category);
+          const showStrength = isStrength(ex.category);
+          const showCore = isCore(ex.category);
+          const showCardio = isCardio(ex.category);
+
+          return (
+            <View key={ex.id} style={styles.exerciseCard}>
+              <Text style={styles.exerciseTitle}>{ex.name} ({ex.category})</Text>
+
+              {/* Grid Header */}
+              <View style={[styles.setRow, { backgroundColor: '#222', paddingVertical: 4 }]}>
+                <Text style={[styles.setInfo, styles.setHeader]}>Type</Text>
+                {showStrength && <Text style={[styles.setInfo, styles.setHeader]}>Reps</Text>}
+                {showStrength && <Text style={[styles.setInfo, styles.setHeader]}>Weight</Text>}
+                {showCardio && <Text style={[styles.setInfo, styles.setHeader]}>Distance</Text>}
+                {(showCore || showCardio) && <Text style={[styles.setInfo, styles.setHeader]}>Time</Text>}
               </View>
-            ))}
-          </View>
-        ))}
+
+              {/* Sets */}
+              {ex.sets.map(set => (
+                <View key={set.id} style={styles.setRow}>
+                  <Text style={styles.setInfo}>{set.type}</Text>
+                  {showStrength && <Text style={styles.setInfo}>{set.reps || '-'}</Text>}
+                  {showStrength && <Text style={styles.setInfo}>{set.weight ? `${set.weight} ${userWeightUnit}` : '-'}</Text>}
+                  {showCardio && <Text style={styles.setInfo}>{set.distance ? `${set.distance} ${userDistanceUnit}` : '-'}</Text>}
+                  {(showCore || showCardio) && (
+                    <Text style={styles.setInfo}>
+                      {(set.minutes || set.seconds)
+                        ? formatHMS((parseInt(set.minutes || '0') * 60) + parseInt(set.seconds || '0'))
+                        : '-'}
+                    </Text>
+                  )}
+                </View>
+              ))}
+            </View>
+          );
+        })}
 
         {/* Totals */}
         <View style={styles.totalsRow}>
-          <Text style={styles.totalText}>Total Volume: {totalVolume} {userWeightUnit}</Text>
-          <Text style={styles.totalText}>Total Reps: {totalReps}</Text>
+          {totalVolume > 0 && <Text style={styles.totalText}>Total Volume: {totalVolume} {userWeightUnit}</Text>}
+          {totalReps > 0 && <Text style={styles.totalText}>Total Reps: {totalReps}</Text>}
           {totalDistance > 0 && <Text style={styles.totalText}>Total Distance: {totalDistance} {userDistanceUnit}</Text>}
           {totalTime > 0 && <Text style={styles.totalText}>Total Time: {formatHMS(totalTime)}</Text>}
         </View>
+        
+        <Pressable
+          style={styles.completeButton}
+          onPress={() => router.push(`/workouts/active/${id}`)}
+        >
+          <Text style={styles.completeText}>Start Workout</Text>
+        </Pressable>
+
       </ScrollView>
 
       {/* Trash at bottom */}
       <View style={styles.bottomBar}>
         <Pressable onPress={() => setDeleteVisible(true)} style={styles.trashButton}>
           <Ionicons name="trash-outline" size={26} color="#ff4444" />
+        </Pressable>
+        <Pressable onPress={() => router.replace(`/workouts/create?id=${workout?.id}`)}  style={styles.trashButton}>
+          <Ionicons name="create-outline" size={26} color="#4CAF50" />
         </Pressable>
       </View>
 
@@ -264,7 +292,6 @@ const removeWorkoutKickOff = async () => {
   );
 }
 
-// Keep the same styles as before
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#121212' },
   loadingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#121212' },
@@ -275,11 +302,8 @@ const styles = StyleSheet.create({
   greenSubTitle: { fontSize: 17, fontWeight: '500', color: '#4CAF50', marginBottom: 8 },
   exerciseCard: { backgroundColor: '#1f1f1f', padding: 16, borderRadius: 12, marginBottom: 16 },
   exerciseTitle: { fontSize: 18, fontWeight: '600', color: '#fff', marginBottom: 10 },
-  setRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginBottom: 6 },
-  setInfo: { color: '#ccc', fontSize: 14 },
   totalsRow: { marginTop: 20 },
   totalText: { color: '#fff', fontSize: 16, marginBottom: 4 },
-  bottomBar: { position: 'absolute', bottom: 0, left: 0, right: 0, backgroundColor: '#1f1f1f', paddingVertical: 20, alignItems: 'center', borderTopWidth: 1, borderTopColor: '#333' },
   trashButton: { padding: 10 },
   modalOverlay: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.6)' },
   modalCard: { width: '80%', backgroundColor: '#1f1f1f', padding: 24, borderRadius: 20 },
@@ -287,4 +311,57 @@ const styles = StyleSheet.create({
   modalButtons: { flexDirection: 'row', justifyContent: 'space-between', width: '100%' },
   cancelText: { color: '#aaa', fontSize: 16 },
   deleteConfirmText: { color: '#ff4444', fontSize: 16, fontWeight: '600' },
+  bottomBar: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    backgroundColor: '#1f1f1f',
+    paddingVertical: 20,
+    paddingHorizontal: 40, // add some horizontal padding
+    flexDirection: 'row',
+    justifyContent: 'space-between', // space between the buttons
+    alignItems: 'center',
+    borderTopWidth: 1,
+    borderTopColor: '#333',
+  },
+  bottomButton: {
+    padding: 10,
+  },
+  setRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    paddingVertical: 6,
+    borderBottomWidth: 1,
+    borderBottomColor: '#333',
+  },
+  setInfo: {
+    flex: 1,
+    textAlign: 'center',
+    color: '#fff',
+  },
+  setHeader: {
+    fontWeight: 'bold',
+    color: '#ccc',
+  },
+  completeButton: {
+    marginTop: 60,
+    // backgroundColor: '#4CAF50',
+    paddingVertical: 14,
+    borderRadius: 25,
+    borderColor: '#4CAF50',
+    borderWidth: 1,
+    // width: '20%',
+    paddingHorizontal: 30,
+    // margin:'0 auto',
+    alignItems: 'center',
+    alignSelf: 'center'
+  },
+
+  completeText: {
+    color: '#4CAF50',
+    fontWeight: '700',
+    fontSize: 16,
+  },
+
 });

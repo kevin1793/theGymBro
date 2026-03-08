@@ -36,8 +36,13 @@ export default function CreateGoal() {
 
   const [open, setOpen] = useState(false);
   const [items, setItems] = useState(
-    exercises.map((ex) => ({ label: ex.name, value: ex.name }))
+    exercises.map((ex) => ({ 
+      label: ex.name, 
+      value: ex.name, 
+      category: ex.category // Add the category to each item
+    }))
   );
+
 
   const [goalTypeOpen, setGoalTypeOpen] = useState(false);
 
@@ -82,6 +87,7 @@ export default function CreateGoal() {
   ];
 
   const requiresSecondaryWeight = goalType === 'max_reps';
+  
 
   const getMeasurementLabel = () => {
     switch (goalType) {
@@ -184,6 +190,26 @@ export default function CreateGoal() {
             {/* Exercise */}
             <Text style={styles.label}>Exercise</Text>
             <DropDownPicker
+              renderListItem={(props) => {
+                const { item, isSelected, onPress } = props;
+                return (
+                  <Pressable 
+                    onPress={() => onPress(item)}
+                    style={[
+                      styles.listItemCustom, 
+                      isSelected && { backgroundColor: '#1f1f1f' }
+                    ]}
+                  >
+                    <View>
+                      <Text style={styles.itemNameText}>{item.label}</Text>
+                      <Text style={styles.itemCategoryText}>{item.category}</Text>
+                    </View>
+                    {isSelected && (
+                      <Ionicons name="checkmark" size={20} color="#4CAF50" />
+                    )}
+                  </Pressable>
+                );
+              }}
               open={open}
               value={exercise}
               items={items}
@@ -200,6 +226,11 @@ export default function CreateGoal() {
               dropDownContainerStyle={styles.dropdownContainer}
               textStyle={{ color: '#fff', fontSize: 16 }}
               placeholderStyle={{ color: '#777' }}
+              searchTextInputStyle={{
+                color: '#fff',            // Fixes the black text
+                borderColor: '#333',     // Matches your dark theme
+                backgroundColor: '#1f1f1f' // Matches your input style
+              }}
             />
 
             {/* Goal Type */}
@@ -353,4 +384,23 @@ const styles = StyleSheet.create({
   dropdownContainer: { backgroundColor: '#1f1f1f', borderColor: '#1f1f1f', borderRadius: 12 },
   saveButton: { backgroundColor: '#4CAF50', padding: 16, borderRadius: 12, marginTop: 30, alignItems: 'center' },
   saveText: { color: '#fff', fontWeight: '700', fontSize: 16 },
+  listItemCustom: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 12,
+    paddingHorizontal: 20,
+    borderBottomWidth: 1,
+    borderBottomColor: '#222',
+  },
+  itemNameText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '500',
+  },
+  itemCategoryText: {
+    color: '#777', // Subdued color for category
+    fontSize: 12,
+    marginTop: 2,
+  },
 });

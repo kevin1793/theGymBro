@@ -37,16 +37,59 @@ export default function Home() {
   const [loading, setLoading] = useState(true);
   // const [workouts, setWorkouts] = useState<Workout[]>([]);
 
-  useFocusEffect(
-    useCallback(() => {
-      const cleanup = async () => {
-        await deleteBrokenGoals();
-        await deleteBrokenWorkouts();
-      };
+  const loadLocalData = useCallback(async () => {
+    try {
+      // Run cleanups
+      await deleteBrokenGoals();
+      await deleteBrokenWorkouts();
 
-      cleanup();
-    }, [])
-);
+      const uid = auth.currentUser?.uid;
+      if (!uid) return;
+
+      // Load goals
+      const goalsList = await getActiveGoals();
+      setGoals(goalsList);
+
+      // Load workouts
+      const workoutsList = await getWorkoutsWithRelations();
+      setWorkouts(workoutsList);
+
+      // Load user
+      let user = await getUser(uid);
+      if (!user) {
+        const userDoc = await getDoc(doc(db, 'users', uid));
+        if (userDoc.exists()) {
+          const data = userDoc.data();
+          user = {
+            uid,
+            firstName: data.firstName || '',
+            lastName: data.lastName || '',
+            email: auth.currentUser?.email || '',
+            createdAt: Date.now(),
+            updatedAt: Date.now(),
+          };
+          await saveUser(user);
+        }
+      }
+      if (user) setFirstName(user.firstName);
+    } catch (error) {
+      console.error('Error loading data:', error);
+    } finally {
+      setLoading(false);
+    }
+  }, [setGoals, setWorkouts]);
+
+  useFocusEffect(
+      useCallback(() => {
+        loadLocalData();
+        const cleanup = async () => {
+          await deleteBrokenGoals();
+          await deleteBrokenWorkouts();
+        };
+
+        cleanup();
+      }, [loadLocalData])
+  );
 
   useEffect(() => {
     const loadLocalData = async () => {

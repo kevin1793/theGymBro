@@ -7,6 +7,13 @@ export const exercises = [
   { name: 'Dumbbell Fly', category: 'Chest', equipment: 'Dumbbell', instructions: '', image: '' },
   { name: 'Push-Ups', category: 'Chest', equipment: 'Bodyweight', instructions: '', image: '' },
 
+    // Legs / Posterior Chain
+  { name: 'Deadlift', category: 'Legs', equipment: 'Barbell', instructions: '', image: '' },
+  { name: 'Romanian Deadlift', category: 'Legs', equipment: 'Barbell', instructions: '', image: '' },
+  { name: 'Stiff Leg Deadlift', category: 'Legs', equipment: 'Barbell', instructions: '', image: '' },
+  { name: 'Sumo Deadlift', category: 'Legs', equipment: 'Barbell', instructions: '', image: '' },
+  { name: 'Dumbbell Romanian Deadlift', category: 'Legs', equipment: 'Dumbbell', instructions: '', image: '' },
+
   // Back
   { name: 'Pull-Ups', category: 'Back', equipment: 'Bodyweight', instructions: '', image: '' },
   { name: 'Chin-Ups', category: 'Back', equipment: 'Bodyweight', instructions: '', image: '' },

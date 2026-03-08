@@ -1,8 +1,9 @@
 import { exercises } from '@/data/exercises';
-import { run } from '@/database/db'; // <-- import SQLite helper
+import { getAll, getOne, run } from '@/database/db';
+import { formatHMS } from '@/utils/helper';
 import { Ionicons } from '@expo/vector-icons';
-import { Stack, useRouter } from 'expo-router';
-import React, { useMemo, useState } from 'react';
+import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   FlatList,
   KeyboardAvoidingView,
@@ -15,12 +16,9 @@ import {
   View,
 } from 'react-native';
 import DraggableFlatList, { RenderItemParams } from 'react-native-draggable-flatlist';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
-
-// Unique ID generator
-const generateID = () => Math.random().toString(36).substring(2, 9);
-
+// ---------------- Types ----------------
 type SetType = {
   id: string;
   reps?: string;
@@ -38,19 +36,87 @@ type ExerciseType = {
   sets: SetType[];
 };
 
+type WorkoutType = {
+  id: string;
+  title: string;
+  description?: string;
+  exercises: ExerciseType[];
+  createdAt: number;
+  updatedAt: number;
+};
+
+// ---------------- ID Generator ----------------
+const generateID = () => Math.random().toString(36).substring(2, 9);
+
+// ---------------- Main Component ----------------
 export default function CreateWorkout() {
+  const insets = useSafeAreaInsets();
+  const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
 
   const userWeightUnit: 'kg' | 'lbs' = 'lbs';
   const userDistanceUnit: 'km' | 'miles' = 'miles';
 
+  // ---------------- State ----------------
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [workoutExercises, setWorkoutExercises] = useState<ExerciseType[]>([]);
+  const [loading, setLoading] = useState(true);
 
-  // Modal state
   const [modalVisible, setModalVisible] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const { id: editId } = useLocalSearchParams<{ id: string }>();
+  const workoutId = editId || generateID(); // use this everywhere
+  const { fromEdit } = useLocalSearchParams<{ fromEdit?: string }>();
+
+
+  // ---------------- Load workout if editing ----------------
+  useEffect(() => {
+    console.log('WORKOUT VIEW PAGE')
+    const fetchWorkout = async () => {
+      if (!id) {
+        setLoading(false);
+        return;
+      }
+
+      try {
+        const workoutData = await getOne<WorkoutType>(`SELECT * FROM workouts WHERE id = ?`, [id]);
+        if (!workoutData) return;
+
+        const exercisesData: ExerciseType[] = await getAll<ExerciseType>(
+          `SELECT * FROM exercises WHERE workoutId = ?`,
+          [workoutData.id]
+        );
+
+        for (let ex of exercisesData) {
+          const setsData: SetType[] = await getAll<SetType>(
+            `SELECT * FROM sets WHERE exerciseId = ?`,
+            [ex.id]
+          );
+
+          ex.sets = setsData.map(set => ({
+            ...set,
+            reps: set.reps?.toString(),
+            weight: set.weight?.toString(),
+            distance: set.distance?.toString(),
+            minutes: set.minutes?.toString(),
+            seconds: set.seconds?.toString(),
+            type: set.type || 'working',
+          }));
+        }
+
+        setTitle(workoutData.title);
+        setDescription(workoutData.description || '');
+        setWorkoutExercises(exercisesData);
+      } catch (error) {
+        console.error('Error fetching workout:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchWorkout();
+  }, [id]);
 
   const filteredExercises = useMemo(
     () =>
@@ -65,7 +131,7 @@ export default function CreateWorkout() {
   const isStrength = (category: string) =>
     !isCore(category) && !isCardio(category);
 
-  // ---------------- Add Exercise ----------------
+  // ---------------- Exercise Handlers ----------------
   const handleAddExercise = (exerciseName: string) => {
     const found = exercises.find((e) => e.name === exerciseName);
     if (!found) return;
@@ -93,7 +159,6 @@ export default function CreateWorkout() {
     setSearchQuery('');
   };
 
-  // ---------------- Set Handlers ----------------
   const addSet = (exerciseIndex: number) => {
     const updated = [...workoutExercises];
     updated[exerciseIndex].sets.push({
@@ -140,7 +205,6 @@ export default function CreateWorkout() {
     setWorkoutExercises(updated);
   };
 
-  // ---------------- Delete Exercise ----------------
   const deleteExercise = (exerciseIndex: number) => {
     const updated = [...workoutExercises];
     updated.splice(exerciseIndex, 1);
@@ -183,77 +247,121 @@ export default function CreateWorkout() {
     return { volume, totalDistance, totalReps, totalTime };
   }, [workoutExercises]);
 
-  // ---------------- Save Workout ----------------
-  const handleSaveWorkout = async () => {
-    // Prevent saving if no title or no exercises
-    if (!title.trim()) {
-      alert('Please enter a workout title.');
-      return;
-    }
+const handleSaveWorkout = async () => {
+  if (!title.trim()) {
+    alert('Please enter a workout title.');
+    return;
+  }
 
-    if (workoutExercises.length === 0) {
-      alert('Please add at least one exercise.');
-      return;
-    }
+  if (workoutExercises.length === 0) {
+    alert('Please add at least one exercise.');
+    return;
+  }
 
-    try {
-      const workoutId = generateID();
-      const now = Date.now();
+  try {
+    const now = Date.now();
+    const finalWorkoutId = id || editId || generateID();
 
-      // Insert workout
+    // 1. Save or Update the Workout entry
+    if (id || editId) {
+      await run(
+        `UPDATE workouts SET title = ?, description = ?, updatedAt = ? WHERE id = ?`,
+        [title, description, now, finalWorkoutId]
+      );
+    } else {
       await run(
         `INSERT INTO workouts (id, title, description, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?)`,
-        [workoutId, title, description, now,now]
+        [finalWorkoutId, title, description, now, now]
       );
+    }
 
-      // Insert exercises and sets
-      for (const ex of workoutExercises) {
-        const exerciseId = generateID();
+    // 2. DELETE Exercises that were removed from the UI
+    const currentExerciseIds = workoutExercises.map((ex) => ex.id);
+    const placeholders = currentExerciseIds.map(() => '?').join(',');
+    
+    // Delete sets belonging to exercises that are about to be deleted
+    await run(
+      `DELETE FROM sets WHERE exerciseId IN (SELECT id FROM exercises WHERE workoutId = ? AND id NOT IN (${placeholders}))`,
+      [finalWorkoutId, ...currentExerciseIds]
+    );
+    // Delete the exercises themselves
+    await run(
+      `DELETE FROM exercises WHERE workoutId = ? AND id NOT IN (${placeholders})`,
+      [finalWorkoutId, ...currentExerciseIds]
+    );
 
+    // 3. Loop through current UI exercises to Save/Update
+    for (const ex of workoutExercises) {
+      const exerciseExists = await getOne(`SELECT id FROM exercises WHERE id = ?`, [ex.id]);
+
+      if (exerciseExists) {
+        await run(
+          `UPDATE exercises SET name = ?, category = ? WHERE id = ?`,
+          [ex.name, ex.category, ex.id]
+        );
+      } else {
         await run(
           `INSERT INTO exercises (id, workoutId, name, category) VALUES (?, ?, ?, ?)`,
-          [exerciseId, workoutId, ex.name, ex.category]
+          [ex.id, finalWorkoutId, ex.name, ex.category]
         );
+      }
 
-        for (const set of ex.sets) {
+      // 4. DELETE Sets within this exercise that were removed from UI
+      const currentSetIds = ex.sets.map((s) => s.id);
+      const setPlaceholders = currentSetIds.map(() => '?').join(',');
+      
+      await run(
+        `DELETE FROM sets WHERE exerciseId = ? AND id NOT IN (${setPlaceholders})`,
+        [ex.id, ...currentSetIds]
+      );
+
+      // 5. Save/Update remaining Sets
+      for (const set of ex.sets) {
+        const setExists = await getOne(`SELECT id FROM sets WHERE id = ?`, [set.id]);
+
+        if (setExists) {
+          await run(
+            `UPDATE sets SET reps = ?, weight = ?, distance = ?, minutes = ?, seconds = ?, type = ? WHERE id = ?`,
+            [set.reps, set.weight, set.distance, set.minutes, set.seconds, set.type, set.id]
+          );
+        } else {
           await run(
             `INSERT INTO sets (id, exerciseId, reps, weight, distance, minutes, seconds, type) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-            [
-              generateID(),
-              exerciseId,
-              set.reps ? Number(set.reps) : null,
-              set.weight ? Number(set.weight) : null,
-              set.distance ? Number(set.distance) : null,
-              set.minutes ? Number(set.minutes) : null,
-              set.seconds ? Number(set.seconds) : null,
-              set.type,
-            ]
+            [set.id, ex.id, set.reps, set.weight, set.distance, set.minutes, set.seconds, set.type]
           );
         }
       }
-
-      // Navigate back after save
-      router.replace('/(tabs)');
-    } catch (error) {
-      console.log('Error saving workout to SQLite:', error);
-      alert('Failed to save workout. Please try again.');
     }
-  };
+
+    // 6. Navigation
+    if (id || editId) {
+      // Replace the Edit screen with the View screen so 'Back' goes to Home
+      router.replace({
+        pathname: "/workouts/[id]",
+        params: { id: finalWorkoutId }
+      });
+    } else {
+      router.replace('/(tabs)');
+    }
+
+  } catch (error) {
+    console.error('Error saving workout:', error);
+    alert('Failed to save workout.');
+  }
+};
 
 
-  // ---------------- Render Set ----------------
+  // ---------------- Renderers ----------------
   const renderSet = (set: SetType, setIndex: number, exerciseIndex: number) => {
     const ex = workoutExercises[exerciseIndex];
     return (
       <View key={set.id} style={styles.setRow}>
-        {/* Up/Down arrows */}
         <Pressable onPress={() => moveSet(exerciseIndex, setIndex, 'up')}>
           <Ionicons name="arrow-up" size={15} color="#777" />
         </Pressable>
         <Pressable onPress={() => moveSet(exerciseIndex, setIndex, 'down')}>
           <Ionicons name="arrow-down" size={15} color="#777" />
         </Pressable>
-
         <Pressable
           onPress={() =>
             updateSet(
@@ -289,9 +397,7 @@ export default function CreateWorkout() {
               placeholder={`Weight (${userWeightUnit})`}
               value={set.weight}
               keyboardType="numeric"
-              onChangeText={(v) =>
-                updateSet(exerciseIndex, setIndex, 'weight', v)
-              }
+              onChangeText={(v) => updateSet(exerciseIndex, setIndex, 'weight', v)}
             />
           </>
         )}
@@ -303,83 +409,69 @@ export default function CreateWorkout() {
               placeholder={`Distance (${userDistanceUnit})`}
               value={set.distance}
               keyboardType="numeric"
-              onChangeText={(v) =>
-                updateSet(exerciseIndex, setIndex, 'distance', v)
-              }
+              onChangeText={(v) => updateSet(exerciseIndex, setIndex, 'distance', v)}
             />
             <TextInput
               style={styles.smallSetInput}
               placeholder="Min"
               value={set.minutes}
               keyboardType="numeric"
-              onChangeText={(v) =>
-                updateSet(exerciseIndex, setIndex, 'minutes', v)
-              }
+              onChangeText={(v) => updateSet(exerciseIndex, setIndex, 'minutes', v)}
             />
             <TextInput
               style={styles.smallSetInput}
               placeholder="Sec"
               value={set.seconds}
               keyboardType="numeric"
-              onChangeText={(v) =>
-                updateSet(exerciseIndex, setIndex, 'seconds', v)
-              }
+              onChangeText={(v) => updateSet(exerciseIndex, setIndex, 'seconds', v)}
             />
           </>
         )}
 
-        <Pressable onPress={() => deleteSet(exerciseIndex, setIndex)}>
+        <Pressable 
+        onPress={() => deleteSet(exerciseIndex, setIndex)}
+        style={{ marginLeft: 'auto', paddingLeft: 10 }}
+        >
           <Ionicons name="trash" size={20} color="#ff5252" />
         </Pressable>
       </View>
     );
   };
 
-  // ---------------- Render Exercise ----------------
-const renderExercise = ({ item, drag, isActive }: RenderItemParams<ExerciseType>) => {
-  const exerciseIndex = workoutExercises.findIndex((e) => e.id === item.id);
+  const renderExercise = ({ item, drag, isActive }: RenderItemParams<ExerciseType>) => {
+    const exerciseIndex = workoutExercises.findIndex((e) => e.id === item.id);
 
-  return (
-    <Pressable
-      onLongPress={drag}
-      disabled={isActive}
-      style={[
-        styles.exerciseBox,
-        { backgroundColor: isActive ? '#2a2a2a' : '#1a1a1a' },
-      ]}
-    >
-      <Text style={styles.exerciseTitle}>{item.name}</Text>
-
-      {item.sets.map((set, setIndex) => renderSet(set, setIndex, exerciseIndex))}
-
-      <Pressable onPress={() => addSet(exerciseIndex)}>
-        <Text style={styles.addSetText}>+ Add Set</Text>
-      </Pressable>
-
-      {/* Trash icon at bottom */}
+    return (
       <Pressable
-        onPress={() => deleteExercise(exerciseIndex)}
-        style={styles.exerciseTrash}
+        onLongPress={drag}
+        disabled={isActive}
+        style={[styles.exerciseBox, { backgroundColor: isActive ? '#2a2a2a' : '#1a1a1a' }]}
       >
-        {/* <Ionicons name="trash" size={20} color="#ff5252" /> */}
-        <Text style={{ color: '#ff5252', marginLeft: 6 }}>Delete Exercise</Text>
+        <Text style={styles.exerciseTitle}>{item.name}</Text>
+        {item.sets.map((set, setIndex) => renderSet(set, setIndex, exerciseIndex))}
+
+        <View style={styles.exerciseFooter}>
+        <Pressable onPress={() => addSet(exerciseIndex)}>
+          <Text style={styles.addSetText}>+ Add Set</Text>
+        </Pressable>
+
+        <Pressable onPress={() => deleteExercise(exerciseIndex)} style={styles.exerciseTrash}>
+          <Ionicons name="trash-outline" size={16} color="#ff5252" />
+          <Text style={{ color: '#ff5252', marginLeft: 6 }}>Delete Exercise</Text>
+        </Pressable>
+      </View>
+
       </Pressable>
-    </Pressable>
-  );
-};
-
-
-  // ---------------- Convert seconds to h:m:s ----------------
-  const formatTime = (seconds: number) => {
-    const hrs = Math.floor(seconds / 3600);
-    const mins = Math.floor((seconds % 3600) / 60);
-    const secs = seconds % 60;
-    let str = '';
-    if (hrs > 0) str += `${hrs}h `;
-    if (mins > 0) str += `${mins}m `;
-    if (secs > 0 || str === '') str += `${secs}s`;
-    return str.trim();
+    );
   };
+
+  if (loading) {
+    return (
+      <View style={styles.loadingContainer}>
+        <Text style={{ color: '#fff' }}>{id ? 'Loading workout...' : 'Loading...'}</Text>
+      </View>
+    );
+  }
 
   return (
     <KeyboardAvoidingView
@@ -388,25 +480,29 @@ const renderExercise = ({ item, drag, isActive }: RenderItemParams<ExerciseType>
     >
       <Stack.Screen
         options={{
-          headerLeft: () => (
-            <Pressable
-              onPress={() => {
-                if (router.canGoBack()) {
-                  router.back(); // normal push stack
-                } else {
-                  router.push('/'); // fallback if JS stack is empty
-                }
-              }}
-              style={{ paddingHorizontal: 16 }}
-            >
-              <Ionicons name="chevron-back" size={24} color="#fff" />
-            </Pressable>
-          ),
-          title: 'Create Workout',
-          headerBackTitle: '',
-          headerBackTitleVisible: false,
-          headerTintColor: '#fff',
+          headerLeft: () => {
+            const { fromEdit } = useLocalSearchParams<{ fromEdit?: string }>();
+            const router = useRouter();
+
+            return (
+              <Pressable
+                onPress={() => {
+                  console.log('Back pressed. fromEdit:', fromEdit);
+                  if (fromEdit) {
+                    router.replace('/(tabs)');
+                  } else {
+                    router.back();
+                  }
+                }}
+                style={{ paddingHorizontal: 16 }}
+              >
+                <Ionicons name="chevron-back" size={24} color="#fff" />
+              </Pressable>
+            );
+          },
+          title: 'Workout',
           headerStyle: { backgroundColor: '#121212' },
+          headerTintColor: '#fff',
         }}
       />
 
@@ -416,8 +512,6 @@ const renderExercise = ({ item, drag, isActive }: RenderItemParams<ExerciseType>
         contentContainerStyle={styles.container}
         renderItem={() => (
           <>
-            {/* <Text style={styles.header}>Create Workout</Text> */}
-
             <TextInput
               style={styles.input}
               placeholder="Workout Title"
@@ -435,13 +529,16 @@ const renderExercise = ({ item, drag, isActive }: RenderItemParams<ExerciseType>
               onChangeText={setDescription}
             />
 
-            {/* Add exercise button */}
-            <Pressable
-              style={styles.addButton}
-              onPress={() => setModalVisible(true)}
-            >
+            <Pressable style={styles.addButton} onPress={() => setModalVisible(true)}>
               <Text style={{ color: '#fff' }}>+ Add Exercise</Text>
             </Pressable>
+
+            {workoutExercises.length >= 2 && (
+              <View style={styles.tipContainer}>
+                <Ionicons name="information-circle-outline" size={16} color="#888" />
+                <Text style={styles.tipText}>Tip: Long press and drag to reorder exercises</Text>
+              </View>
+            )}
 
             <DraggableFlatList
               data={workoutExercises}
@@ -451,60 +548,69 @@ const renderExercise = ({ item, drag, isActive }: RenderItemParams<ExerciseType>
             />
 
             <View style={{ marginTop: 20 }}>
-              <Text style={styles.total}>
-                Total Volume: {totals.volume} {userWeightUnit}
-              </Text>
-              <Text style={styles.total}>Total Reps: {totals.totalReps}</Text>
-              <Text style={styles.total}>
-                Total Distance: {totals.totalDistance} {userDistanceUnit}
-              </Text>
+              {/* Show Volume only if there is strength data */}
+              {totals.volume > 0 && (
+                <Text style={styles.total}>
+                  Total Volume: {totals.volume} {userWeightUnit}
+                </Text>
+              )}
+
+              {/* Show Reps only if reps were performed */}
+              {totals.totalReps > 0 && (
+                <Text style={styles.total}>
+                  Total Reps: {totals.totalReps}
+                </Text>
+              )}
+
+              {/* Show Distance only if there's cardio data */}
+              {totals.totalDistance > 0 && (
+                <Text style={styles.total}>
+                  Total Distance: {totals.totalDistance} {userDistanceUnit}
+                </Text>
+              )}
+
+              {/* Show Time only if duration was recorded */}
               {totals.totalTime > 0 && (
                 <Text style={styles.total}>
-                  Total Time: {formatTime(totals.totalTime)}
+                  Total Time: {formatHMS(totals.totalTime)}
                 </Text>
               )}
             </View>
 
+
             <Pressable style={styles.saveButton} onPress={handleSaveWorkout}>
-              <Text style={styles.saveText}>Save Workout</Text>
+              <Text style={styles.saveText}>{id ? 'Save Changes' : 'Save Workout'}</Text>
             </Pressable>
 
-            {/* Modal for exercise selection */}
             <Modal visible={modalVisible} animationType="slide">
-              <SafeAreaView  style={styles.modalContainer}>
-                <Text style={styles.modalTitle}>Select Exercise</Text>
-
-                <TextInput
-                  style={styles.searchInput}
-                  placeholder="Search..."
-                  placeholderTextColor="#777"
-                  value={searchQuery}
-                  onChangeText={setSearchQuery}
-                />
-
-                <FlatList
-                  data={filteredExercises}
-                  keyExtractor={(item) => item.name}
-                  renderItem={({ item }) => (
-                    <Pressable
-                      style={styles.exerciseItem}
-                      onPress={() => handleAddExercise(item.name)}
-                    >
-                      <Text style={{ color: '#fff' }}>{item.name}</Text>
-                      <Text style={{ color: '#777', fontSize: 12 }}>
-                        {item.category}
-                      </Text>
-                    </Pressable>
-                  )}
-                />
-
-                <Pressable
-                  style={styles.closeButton}
-                  onPress={() => setModalVisible(false)}
-                >
-                  <Text style={{ color: '#fff' }}>Close</Text>
-                </Pressable>
-              </SafeAreaView >
+              <View style={[styles.modalContainer, { paddingTop: insets.top }]}>
+                <SafeAreaView style={styles.modalContainer}>
+                  <Text style={styles.modalTitle}>Select Exercise</Text>
+                  <TextInput
+                    style={styles.searchInput}
+                    placeholder="Search..."
+                    placeholderTextColor="#777"
+                    value={searchQuery}
+                    onChangeText={setSearchQuery}
+                  />
+                  <FlatList
+                    data={filteredExercises}
+                    keyExtractor={(item) => item.name}
+                    renderItem={({ item }) => (
+                      <Pressable
+                        style={styles.exerciseItem}
+                        onPress={() => handleAddExercise(item.name)}
+                      >
+                        <Text style={{ color: '#fff' }}>{item.name}</Text>
+                        <Text style={{ color: '#777', fontSize: 12 }}>{item.category}</Text>
+                      </Pressable>
+                    )}
+                  />
+                  <Pressable style={styles.closeButton} onPress={() => setModalVisible(false)}>
+                    <Text style={{ color: '#fff' }}>Close</Text>
+                  </Pressable>
+                </SafeAreaView>
+              </View>
             </Modal>
           </>
         )}
@@ -513,19 +619,9 @@ const renderExercise = ({ item, drag, isActive }: RenderItemParams<ExerciseType>
   );
 }
 
+// ---------------- Styles ----------------
 const styles = StyleSheet.create({
-  exerciseTrash: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: 12,
-    paddingTop: 13,
-    borderTopColor: '#333',
-    borderTopWidth: 1,
-  },
-
   container: { padding: 20 },
-  header: { fontSize: 28, color: '#fff', marginBottom: 20 },
   input: {
     backgroundColor: '#1f1f1f',
     color: '#fff',
@@ -551,46 +647,105 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 6,
     marginTop: 10,
+        width: '100%',
+
   },
   smallSetInput: {
     backgroundColor: '#2a2a2a',
     color: '#fff',
-    padding: 6,
-    width: 50,
-    borderRadius: 8,
-    flex: 1,
+    padding: 7,
+    borderRadius: 6,
+    textAlign: 'center',
+    flex: 1,           // THIS IS KEY: It makes inputs share the remaining space
+    marginHorizontal: 4, // Adds spacing between the inputs
   },
-  addSetText: { color: '#4CAF50', marginTop: 10 },
-  total: { color: '#fff', fontSize: 16 },
+  // addSetText: {
+  //   color: '#4CAF50',
+  //   marginTop: 8,
+  //   fontWeight: '600',
+  // },
+  // exerciseTrash: {
+  //   flexDirection: 'row',
+  //   alignItems: 'center',
+  //   marginTop: 8,
+  //   alignSelf: 'flex-end', // Pushes the whole component to the right
+  // },
+
+  exerciseFooter: {
+    flexDirection: 'row',
+    justifyContent: 'space-between', // This pushes one to the left and one to the right
+    alignItems: 'center',
+    marginTop: 15,
+    paddingTop: 10,
+    borderTopWidth: 1,      // Optional: adds a subtle separator line
+    borderTopColor: '#2a2a2a',
+  },
+  addSetText: {
+    color: '#4CAF50',
+    fontWeight: '600',
+    paddingVertical: 4,    // Increases the touch target
+  },
+  exerciseTrash: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 4,    // Increases the touch target
+  },
+  total: {
+    color: '#fff',
+    fontSize: 16,
+    marginBottom: 4,
+  },
   saveButton: {
     backgroundColor: '#4CAF50',
-    padding: 16,
+    padding: 14,
     borderRadius: 12,
-    marginTop: 30,
+    alignItems: 'center',
+    marginTop: 24,
+    marginBottom: 40,
+  },
+  saveText: { color: '#fff', fontSize: 16, fontWeight: '600' },
+  loadingContainer: {
+    flex: 1,
+    backgroundColor: '#121212',
+    justifyContent: 'center',
     alignItems: 'center',
   },
-  saveText: { color: '#fff', fontWeight: '700' },
-
-  // Modal
   modalContainer: { flex: 1, backgroundColor: '#121212', padding: 20 },
-  modalTitle: { fontSize: 22, color: '#fff', marginBottom: 10 },
+  modalTitle: { color: '#fff', fontSize: 20, fontWeight: '600', marginBottom: 12 },
   searchInput: {
     backgroundColor: '#1f1f1f',
     color: '#fff',
-    padding: 12,
-    borderRadius: 12,
+    padding: 10,
+    borderRadius: 10,
     marginBottom: 12,
   },
   exerciseItem: {
-    padding: 15,
-    borderBottomColor: '#222',
+    padding: 12,
+    borderBottomColor: '#333',
     borderBottomWidth: 1,
   },
   closeButton: {
     backgroundColor: '#333',
-    padding: 14,
-    borderRadius: 12,
+    padding: 12,
+    borderRadius: 10,
     alignItems: 'center',
-    marginTop: 10,
+    marginTop: 20,
   },
+
+  tipContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(255, 255, 255, 0.05)',
+    paddingVertical: 8,
+    borderRadius: 8,
+    marginBottom: 16,
+    gap: 6,
+  },
+  tipText: {
+    color: '#888',
+    fontSize: 13,
+    fontStyle: 'italic',
+  },
+
 });

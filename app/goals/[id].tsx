@@ -39,28 +39,29 @@ export default function GoalView() {
 
 
   useEffect(() => {
-  const fetchGoal = async () => {
-    if (!id) return;
-    try {
-      setLoading(true);
-      // SQLite Query
-      const data = await getOne<Goal>(`SELECT * FROM goals WHERE id = ?`, [id]);
-      
-      if (data) {
-        console.log('Fetched goal from SQLite:', data);
-        setGoal(data);
-      } else {
-        setGoal(null);
+    const fetchGoal = async () => {
+      if (!id) return;
+      try {
+        setLoading(true);
+        // SQLite Query
+        const data = await getOne<Goal>(`SELECT * FROM goals WHERE id = ?`, [id]);
+        
+        if (data) {
+          console.log('View Goal:', data);
+          console.log('Fetched Goal from SQLite:', data);
+          setGoal(data);
+        } else {
+          setGoal(null);
+        }
+      } catch (error) {
+        console.error('Error fetching goal from SQLite:', error);
+      } finally {
+        setLoading(false);
       }
-    } catch (error) {
-      console.error('Error fetching goal from SQLite:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
+    };
 
-  fetchGoal();
-}, [id]);
+    fetchGoal();
+  }, [id]);
 
 
   if (loading) {
@@ -96,23 +97,15 @@ export default function GoalView() {
   }
   const changeCurrentValue = async (delta: number) => {
     if (!goal) return;
-
     setUpdating(true);
-
     try {
       const newValue = goal.currentValue + delta;
-
       const updatedGoal = {
         ...goal,
         currentValue: newValue,
       };
-
       setGoal(updatedGoal);
-
-      // Save to SQLite
       await saveGoal(updatedGoal);
-
-      // Update global context
       addOrUpdateGoal(updatedGoal);
 
     } catch (error) {
@@ -127,10 +120,8 @@ const confirmDeleteGoal = async () => {
 
   try {
     await deleteGoal(goal.id);
-
     removeGoal(goal.id); // update context
     router.back();
-
   } catch (error) {
     console.error('Error deleting goal:', error);
   }
@@ -163,16 +154,9 @@ const completeGoalKickOff = async () => {
       completed: 1,
       completedAt: Date.now(),
     };
-
-    // update local page
     setGoal(updatedGoal);
-
-    // save to SQLite
     await saveGoal(updatedGoal);
-
-    // update global goals state
     addOrUpdateGoal(updatedGoal);
-
   } catch (error) {
     console.error('Error completing goal:', error);
   } finally {
@@ -189,13 +173,9 @@ const undoCompleteGoal = async () => {
       completed: 0,
       completedAt: null,
     };
-
     setGoal(updatedGoal);
-
     await saveGoal(updatedGoal);
-
     addOrUpdateGoal(updatedGoal);
-
   } catch (error) {
     console.error('Error undoing goal completion:', error);
   }
@@ -335,7 +315,7 @@ return (
         {/* Delete Goal Modal */}
         <Modal
           transparent
-          animationType="fade"
+          animationType="slide"
           visible={deleteVisible}
         >
           <View style={styles.modalOverlay}>
@@ -359,7 +339,8 @@ return (
             </View>
           </View>
         </Modal>
-
+        
+        {/* Confirm Modal */}
         <Modal
           animationType="slide"
           transparent
@@ -435,7 +416,7 @@ return (
 
         {goal.secondaryValue != null && (
           <Text style={styles.secondary}>
-            Secondary Value: {goal.secondaryValue} {goal.secondaryUnit}
+            Rep Weight: {goal.secondaryValue} {goal.secondaryUnit}
           </Text>
         )}
 
@@ -499,17 +480,6 @@ return (
             </Pressable>
           </View>
         )}
-        
-
-        {/* Complete Goal Button
-        {!goal.completed && (
-          <Pressable
-          style={styles.completeButton}
-          onPress={() => setModalVisible(true)}
-        >
-          <Text style={styles.completeText}>Complete Goal</Text>
-        </Pressable>
-        )} */}
 
         {/* Complete / Undo Goal Button */}
         {!goal.completed ? (
@@ -594,12 +564,12 @@ const styles = StyleSheet.create({
     fontSize: 16,
   },
 
-  modalOverlay: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: 'rgba(0,0,0,0.6)',
-  },
+  // modalOverlay: {
+  //   flex: 1,
+  //   justifyContent: 'center',
+  //   alignItems: 'center',
+  //   backgroundColor: 'rgba(0,0,0,0.6)',
+  // },
 
   modalContent: {
     backgroundColor: '#1f1f1f',
@@ -609,15 +579,13 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
 
-  modalTitle: {
-    color: '#fff',
-    fontSize: 18,
-    fontWeight: '700',
-    textAlign: 'center',
-    marginBottom: 24,
-  },
-
-
+  // modalTitle: {
+  //   color: '#fff',
+  //   fontSize: 18,
+  //   fontWeight: '700',
+  //   textAlign: 'center',
+  //   marginBottom: 24,
+  // },
 
   modalButton: {
     flex: 1,
@@ -625,13 +593,6 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     alignItems: 'center',
     marginHorizontal: 5,
-  },
-
-  deleteMessage: {
-    color: '#aaa',
-    fontSize: 14,
-    marginBottom: 20,
-    textAlign: 'center',
   },
 
   deleteConfirmText: {
@@ -662,16 +623,6 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
 
-  input: {
-    backgroundColor: '#2a2a2a',
-    color: '#fff',
-    padding: 12,
-    borderRadius: 12,
-    fontSize: 18,
-    textAlign: 'center',
-    marginBottom: 20,
-  },
-
   modalButtons: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -692,6 +643,16 @@ const styles = StyleSheet.create({
   content: {
     padding: 20,
     paddingBottom: 140,
+  },
+
+  input: {
+    backgroundColor: '#2a2a2a',
+    color: '#fff',
+    padding: 12,
+    borderRadius: 12,
+    fontSize: 18,
+    textAlign: 'center',
+    marginBottom: 20,
   },
 
   counterSection: {
