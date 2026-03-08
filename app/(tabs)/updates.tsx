@@ -1,85 +1,118 @@
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
-import { Collapsible } from '@/components/ui/collapsible';
-import { IconSymbol } from '@/components/ui/icon-symbol';
+import { IconSymbol, type IconSymbolName } from '@/components/ui/icon-symbol';
 import { Fonts } from '@/constants/theme';
-import { ScrollView, StyleSheet, View } from 'react-native';
+import { ScrollView, StyleSheet, Text, View } from 'react-native';
+
+const UPDATES: Array<{ status: string; title: string; desc: string; icon: IconSymbolName }> = [
+  { status: 'Live', title: 'Calendar Tracking', desc: 'Full history with monthly stats and volume tracking.', icon: 'calendar' },
+  { status: 'In Progress', title: 'PR & Progression', desc: 'Visual charts for your 1RM and lift history.', icon: 'chart.line.uptrend.xyaxes' },
+  { status: 'Planned', title: 'Global Community', desc: 'Connect with other lifters and share routines.', icon: 'person.2.fill' },
+  { status: 'Planned', title: 'Profile Customization', desc: 'Custom avatars, bios, and public PR boards.', icon: 'person.crop.circle' },
+];
+
+const ROADMAP_DATA = [
+  {
+    status: 'Live',
+    color: '#4CAF50',
+    items: [
+      { title: 'Calendar History', desc: 'Monthly view of all past sessions with volume stats.', icon: 'calendar' },
+      { title: 'Goal Tracking', desc: 'Set and track 1RMs, distance, and time goals.', icon: 'target' },
+      { title: 'Active Workout Mode', desc: 'Live stopwatch, rest tracking, and set-by-set checkoffs.', icon: 'play.circle.fill' },
+    ]
+  },
+  // {
+  //   status: 'In Progress',
+  //   color: '#2196F3',
+  //   items: [
+  //     { title: 'PR Progression Charts', desc: 'Visual graphs to see your strength gains over time.', icon: 'chart.line.uptrend.xyaxes' },
+  //     { title: 'Profile Customization', desc: 'Personalize your profile and public PR board.', icon: 'person.crop.circle' },
+  //   ]
+  // },
+  {
+    status: 'Planned',
+    color: '#888',
+    items: [
+      { title: 'Global Community', desc: 'Chat and share routines with other lifters.', icon: 'person.2.fill' },
+      // { title: 'Nutrition Integration', desc: 'Quick calorie and macro logging for your bulk/cut.', icon: 'fork.knife' },
+    ]
+  }
+];
 
 export default function UpdatesPage() {
   return (
     <ThemedView style={styles.container}>
-      <ScrollView contentContainerStyle={styles.scrollContent}>
-        {/* Header */}
+      <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+        
+        {/* Header Section */}
         <View style={styles.headerContainer}>
-          <IconSymbol
-            size={180}
-            color="#4CAF50"
-            name="sparkles"
-            style={styles.headerIcon}
-          />
-          <ThemedText type="title" style={styles.title}>
-            Updates & Roadmap
-          </ThemedText>
-          <ThemedText style={styles.subtitle}>
-            Here's what’s coming next in the app.
+          <View style={styles.iconCircle}>
+            <IconSymbol size={50} color="#4CAF50" name="sparkles" />
+          </View>
+          <ThemedText type="title" style={styles.title}>Roadmap</ThemedText>
+          <ThemedText style={styles.subtitle}>Our journey to the ultimate fitness partner.</ThemedText>
+        </View>
+
+        {/* Grouped Sections */}
+        {ROADMAP_DATA.map((section) => (
+          <View key={section.status} style={styles.sectionContainer}>
+            <View style={styles.sectionHeaderRow}>
+              <View style={[styles.statusDot, { backgroundColor: section.color }]} />
+              <Text style={[styles.sectionLabel, { color: section.color }]}>
+                {section.status.toUpperCase()}
+              </Text>
+            </View>
+
+            {section.items.map((item, idx) => (
+              <View key={idx} style={styles.updateCard}>
+                <View style={styles.cardHeader}>
+                  <ThemedText style={styles.cardTitle}>{item.title}</ThemedText>
+                  <IconSymbol size={20} color="#444" name={item.icon} />
+                </View>
+                <ThemedText style={styles.cardDesc}>{item.desc}</ThemedText>
+              </View>
+            ))}
+          </View>
+        ))}
+
+        <View style={styles.missionCard}>
+          <ThemedText style={styles.missionText}>
+            Every update is built based on lifter feedback. Have a request? Let us know.
           </ThemedText>
         </View>
 
-        {/* Upcoming Features */}
-        <Collapsible title="Upcoming Features">
-          <ThemedText>🔥 Global chat / community threads</ThemedText>
-          <ThemedText>⚡ Profile editing & customization</ThemedText>
-          <ThemedText>📅 Calendar-based workout tracking</ThemedText>
-          <ThemedText>🏋️‍♂️ PRs & progression tracking</ThemedText>
-          <ThemedText>✨ And much more!</ThemedText>
-        </Collapsible>
-
-        {/* Notes / Info */}
-        <Collapsible title="Why we’re building this">
-          <ThemedText>
-            The goal of this app is to help you track your progress, connect with
-            the community, and stay motivated. We’ll continue adding features based
-            on feedback and usage.
-          </ThemedText>
-        </Collapsible>
-
-        <Collapsible title="Work in Progress">
-          <ThemedText>
-            This page is a placeholder for updates. As the app evolves, we’ll include
-            release notes, feature highlights, and announcements here.
-          </ThemedText>
-        </Collapsible>
       </ScrollView>
     </ThemedView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#121212',
+  container: { flex: 1, backgroundColor: '#121212' },
+  scrollContent: { padding: 20, paddingTop: 40 },
+  headerContainer: { alignItems: 'center', marginBottom: 40 },
+  iconCircle: {
+    width: 90, height: 90, borderRadius: 45,
+    backgroundColor: 'rgba(76, 175, 80, 0.1)',
+    justifyContent: 'center', alignItems: 'center',
+    marginBottom: 16, borderWidth: 1, borderColor: 'rgba(76, 175, 80, 0.2)',
   },
-  scrollContent: {
-    padding: 20,
-    paddingBottom: 40,
+  title: { fontFamily: Fonts.rounded, fontSize: 32, color: '#fff', fontWeight: '800' },
+  subtitle: { fontSize: 14, color: '#777', marginTop: 4, textAlign: 'center' },
+  sectionContainer: { marginBottom: 30 },
+  sectionHeaderRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 12, gap: 8 },
+  statusDot: { width: 8, height: 8, borderRadius: 4 },
+  sectionLabel: { fontSize: 12, fontWeight: '900', letterSpacing: 1.5 },
+  updateCard: {
+    backgroundColor: '#1f1f1f', borderRadius: 16, padding: 16,
+    marginBottom: 10, borderWidth: 1, borderColor: '#2a2a2a',
   },
-  headerContainer: {
-    alignItems: 'center',
-    marginBottom: 30,
+  cardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  cardTitle: { color: '#fff', fontSize: 16, fontWeight: '700' },
+  cardDesc: { color: '#aaa', fontSize: 13, marginTop: 4, lineHeight: 18 },
+  missionCard: {
+    marginTop: 10, padding: 20, borderRadius: 16,
+    backgroundColor: 'rgba(255,255,255,0.03)', borderStyle: 'dashed',
+    borderWidth: 1, borderColor: '#333',
   },
-  headerIcon: {
-    marginBottom: 12,
-  },
-  title: {
-    fontFamily: Fonts.rounded,
-    fontSize: 28,
-    color: '#fff',
-    textAlign: 'center',
-  },
-  subtitle: {
-    fontSize: 14,
-    color: '#aaa',
-    textAlign: 'center',
-    marginTop: 6,
-  },
+  missionText: { color: '#666', fontSize: 13, textAlign: 'center', fontStyle: 'italic' },
 });

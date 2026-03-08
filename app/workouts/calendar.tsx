@@ -97,10 +97,32 @@ export default function WorkoutCalendar() {
         ListHeaderComponent={
           <>
             <Calendar
-              theme={{ calendarBackground: '#1f1f1f', dayTextColor: '#fff', todayTextColor: '#4CAF50', monthTextColor: '#fff', arrowColor: '#4CAF50' }}
+              theme={{
+                // Colors
+                calendarBackground: '#1f1f1f',
+                dayTextColor: '#fff',
+                todayTextColor: '#4CAF50',
+                monthTextColor: '#fff',
+                arrowColor: '#4CAF50',
+                textDisabledColor: '#444',
+                dotColor: '#4CAF50',
+                
+                // Font Styling to match your headers and stats
+                textDayFontSize: 14,
+                textMonthFontSize: 16,
+                textDayHeaderFontSize: 12,
+                
+                textDayFontWeight: '500',
+                textMonthFontWeight: '700',
+                textDayHeaderFontWeight: '700',
+                
+                // Matching the "StatLabel" style for day headers (Mon, Tue, etc.)
+                textSectionTitleColor: '#888', 
+              }}
               markedDates={markedDates}
               style={styles.calendar}
             />
+
 
             <View style={styles.statsGrid}>
               <View style={styles.statItem}>
@@ -138,11 +160,16 @@ export default function WorkoutCalendar() {
             <Text style={styles.historyVol}>
               {[
                 item.totalVolume > 0 ? `${item.totalVolume.toLocaleString()} lbs` : null,
-                item.totalDistance > 0 ? `${item.totalDistance.toLocaleString()} miles` : null
+                item.totalDistance > 0 
+                  ? `${item.totalDistance.toLocaleString()} ${item.totalDistance === 1 ? 'mile' : 'miles'}` 
+                  : null,
+                item.totalReps > 0 ? `${item.totalReps.toLocaleString()} reps` : null
               ]
-                .filter(Boolean) // Removes null values
+                .filter(Boolean)
                 .join(' • ')}
             </Text>
+
+
           </View>
         )}
       />
@@ -157,7 +184,6 @@ const styles = StyleSheet.create({
   statsRow: { flexDirection: 'row', justifyContent: 'space-around', marginHorizontal: 16, marginBottom: 20 },
   statBox: { alignItems: 'center', backgroundColor: '#1f1f1f', padding: 15, borderRadius: 12, width: '45%' },
   statNum: { color: '#4CAF50', fontSize: 20, fontWeight: 'bold' },
-  statLabel: { color: '#aaa', fontSize: 12, marginTop: 4 },
   sectionTitle: { color: '#fff', fontSize: 18, fontWeight: 'bold', marginLeft: 16, marginBottom: 12 },
   historyCard: { 
     flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
