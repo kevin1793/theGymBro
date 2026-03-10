@@ -1,17 +1,20 @@
-import { AppModal } from '@/components/AppModal'; // Import your custom modal
+import { AppModal } from '@/components/AppModal';
 import { auth, db } from '@/lib/firebase';
-import { createPost, deletePost, reportPost, toggleLike } from '@/repositories/threadRepo';
+import { createPost, reportPost, toggleLike } from '@/repositories/threadRepo';
+import { getUser } from '@/repositories/usersRepo'; // Import your user repo
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import { useRouter } from 'expo-router';
-import { collection, onSnapshot, orderBy, query } from 'firebase/firestore';
+import { collection, doc, getDoc, onSnapshot, orderBy, query } from 'firebase/firestore';
 import React, { useCallback, useEffect, useState } from 'react';
 import { FlatList, Pressable, RefreshControl, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-export default function GlobalChat({ firstName }: { firstName: string }) {
+export default function GlobalChat() {
   const router = useRouter();
   const [inputText, setInputText] = useState('');
   const [posts, setPosts] = useState<any[]>([]);
+  const [username, setUsername] = useState<string>('Gym Member'); // State to hold the fetched username
+  const [refreshing, setRefreshing] = useState(false);
 
   // --- MODAL STATE ---
   const [modalVisible, setModalVisible] = useState(false);
@@ -26,60 +29,94 @@ export default function GlobalChat({ firstName }: { firstName: string }) {
     setModalConfig({ title, onConfirm, variant, confirmText });
     setModalVisible(true);
   };
-  const [refreshing, setRefreshing] = useState(false);
 
-  // Function called when user pulls down
-  const onRefresh = useCallback(async () => {
-    setRefreshing(true);
-    try {
-      // Since we use onSnapshot, the data stays in sync, 
-      // but "refreshing" gives the user visual feedback.
-      // We can just add a small delay to simulate a reload.
-      await new Promise(resolve => setTimeout(resolve, 1000));
-    } finally {
-      setRefreshing(false);
-    }
+  // --- FETCH USERNAME ON MOUNT ---
+  useEffect(() => {
+    const fetchUser = async () => {
+      const uid = auth.currentUser?.uid;
+      if (uid) {
+        const user = await getUser(uid); // Fetches from your SQLite 'users' table
+        if (user?.username) {
+          setUsername(user.username);
+        }
+      }
+    };
+    fetchUser();
   }, []);
-
-  // --- REPO ACTIONS ---
-  const showOptions = (post: any) => {
-    const isMyPost = post.uid === auth.currentUser?.uid;
-
-    if (isMyPost) {
-      openModal(
-        "Delete this post forever?",
-        async () => {
-          await deletePost(post.id);
-          setModalVisible(false);
-        },
-        'danger',
-        'Delete'
-      );
-    } else {
-      openModal(
-        "Report this post for inappropriate content?",
-        async () => {
-          await reportPost(post.id, post.text, "User Flagged from Feed");
-          setModalVisible(false);
-        },
-        'success',
-        'Report'
-      );
-    }
-  };
 
   // --- FEED LOGIC ---
   useEffect(() => {
     const q = query(collection(db, 'posts'), orderBy('createdAt', 'desc'));
-    return onSnapshot(q, (snapshot) => {
+    const unsubscribe = onSnapshot(q, (snapshot) => {
       setPosts(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
     });
+    return () => unsubscribe();
   }, []);
 
-  const handleSendPost = async () => {
-    if (inputText.trim()) {
-      await createPost(inputText, firstName || 'Gym Member');
-      setInputText('');
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    // You could re-fetch the user here too if needed
+    setTimeout(() => setRefreshing(false), 1000);
+  }, []);
+
+const handleSendPost = async () => {
+    const uid = auth.currentUser?.uid;
+    if (!uid) return;
+
+    try {
+      // 1. Fetch latest user status
+      const userDoc = await getDoc(doc(db, 'users', uid));
+      const userData = userDoc.data();
+
+      if (userData?.banUntil && userData.banUntil > Date.now()) {
+        const unlockDate = new Date(userData.banUntil).toLocaleString();
+        // Updated to pass the message directly to openModal
+        openModal(
+          `You are banned from posting until: \n${unlockDate}`,
+          () => setModalVisible(false),
+          'danger',
+          'OK'
+        );
+        return;
+      }
+
+      // 2. If not banned
+      if (inputText.trim()) {
+        await createPost(inputText, username);
+        setInputText('');
+      }
+    } catch (error) {
+      console.error("Post Error:", error);
+    }
+  };
+
+
+  const showOptions = (post: any) => {
+    const uid = auth.currentUser?.uid;
+    const isMyPost = post.uid === uid;
+    
+    if (isMyPost) {
+      openModal("Delete this post?", async () => {
+        // await deletePost(post.id);
+        setModalVisible(false);
+      }, 'danger', 'Delete');
+    } else {
+      // Check local state immediately before opening modal
+      if (post.reportedBy?.includes(uid)) {
+        openModal("Already Reported", () => setModalVisible(false), 'success', 'OK');
+        return;
+      }
+
+      openModal("Report this post?", async () => {
+        try {
+          await reportPost(post.id, post.text, post.uid);
+          setModalVisible(false);
+        } catch (error: any) {
+          if (error.message === "ALREADY_REPORTED") {
+            setModalConfig(prev => ({ ...prev, title: "You have already reported this post.", confirmText: "OK" }));
+          }
+        }
+      }, 'danger', 'Report');
     }
   };
 
@@ -93,7 +130,6 @@ export default function GlobalChat({ firstName }: { firstName: string }) {
     <SafeAreaView style={styles.chatSection}>
       <AppModal {...modalConfig} visible={modalVisible} onClose={() => setModalVisible(false)} />
 
-      {/* Header and Input stay outside the list or in ListHeaderComponent */}
       <View style={{ paddingHorizontal: 20 }}>
         <Text style={styles.sectionTitle}>Community Feed</Text>
         <View style={styles.inputContainer}>
@@ -115,12 +151,7 @@ export default function GlobalChat({ firstName }: { firstName: string }) {
         keyExtractor={(item) => item.id}
         contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 100 }}
         refreshControl={
-          <RefreshControl 
-            refreshing={refreshing} 
-            onRefresh={onRefresh} 
-            tintColor="#4CAF50" // iOS Spinner Color
-            colors={["#4CAF50"]} // Android Spinner Color
-          />
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#4CAF50" colors={["#4CAF50"]} />
         }
         renderItem={({ item }) => (
           <Pressable 
@@ -132,10 +163,16 @@ export default function GlobalChat({ firstName }: { firstName: string }) {
           >
             <View style={styles.postHeader}>
               <View>
-                <Text style={styles.postUser}>{item.userName}</Text>
+                <Text style={styles.postUser}>{item.userName} {item.uid === auth.currentUser?.uid && (
+        <Text style={[styles.postUser, { color: '#888', marginLeft: 4, fontWeight: '400' }]}>
+          (You)
+        </Text>
+      )}</Text>
+                {/* ADDED: "You" tag logic */}
+      
                 <Text style={styles.postDate}>{formatPostDate(item.createdAt)}</Text>
               </View>
-              <Pressable onPress={(e) => { e.stopPropagation(); showOptions(item); }}>
+              <Pressable onPress={(e) => { e.stopPropagation(); showOptions(item); }} style={{ padding: 5 }}>
                 <MaterialIcons name="more-horiz" size={24} color="#888" />
               </Pressable>
             </View>
@@ -160,8 +197,8 @@ export default function GlobalChat({ firstName }: { firstName: string }) {
 }
 
 const styles = StyleSheet.create({
-  chatSection: { marginTop: 10 },
-  sectionTitle: { fontSize: 22, fontWeight: 'bold', color: '#fff', marginBottom: 15,textAlign:'center' },
+  chatSection: { flex: 1, backgroundColor: '#121212' },
+  sectionTitle: { fontSize: 22, fontWeight: 'bold', color: '#fff', marginVertical: 15, textAlign: 'center' },
   inputContainer: { flexDirection: 'row', marginBottom: 20 },
   input: { flex: 1, backgroundColor: '#1E1E1E', color: '#fff', borderRadius: 8, padding: 12, marginRight: 10 },
   sendButton: { backgroundColor: '#4CAF50', justifyContent: 'center', paddingHorizontal: 20, borderRadius: 8 },

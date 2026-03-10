@@ -19,6 +19,8 @@ export default function Profile() {
     lastName: string;
     email: string;
     username?: string;
+    isFlagged?: boolean;    // Add this
+    banUntil?: number;      // Add this
   } | null>(null);
 
   // States for the edit form
@@ -107,6 +109,18 @@ export default function Profile() {
       {/* Profile Header */}
       <Text style={styles.name}>{userData?.firstName} {userData?.lastName}</Text>
       <Text style={styles.email}>{userData?.email}</Text>
+
+      {userData?.isFlagged && (
+        <View style={[styles.infoBox, { borderColor: '#ff4444', borderWidth: 1 }]}>
+          <Text style={[styles.infoLabel, { color: '#ff4444' }]}>ACCOUNT STATUS</Text>
+          <Text style={styles.infoValue}>Flagged for Review</Text>
+          {userData.banUntil > Date.now() && (
+            <Text style={{ color: '#aaa', fontSize: 12, marginTop: 4 }}>
+              Posting Restricted until: {new Date(userData.banUntil).toLocaleDateString()}
+            </Text>
+          )}
+        </View>
+      )}
 
       <View style={styles.infoContainer}>
         {/* First Name Field */}

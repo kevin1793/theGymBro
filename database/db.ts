@@ -89,6 +89,10 @@ export async function initDatabase() {
   try { await db.execAsync("ALTER TABLE goals ADD COLUMN secondaryValue REAL;"); } catch(e){}
   try { await db.execAsync("ALTER TABLE goals ADD COLUMN secondaryUnit TEXT;"); } catch(e){}
   try { await db.execAsync("ALTER TABLE users ADD COLUMN username TEXT;"); } catch(e){}
+  try { await db.execAsync("ALTER TABLE users ADD COLUMN isFlagged INTEGER DEFAULT 0;"); } catch(e){}
+
+  try { await db.execAsync("ALTER TABLE users ADD COLUMN banUntil INTEGER;"); } catch(e){}
+
   try { 
     await db.execAsync("ALTER TABLE workouts ADD COLUMN lastCompletedAt INTEGER;"); 
     console.log("Migration: Added lastCompletedAt to workouts");
