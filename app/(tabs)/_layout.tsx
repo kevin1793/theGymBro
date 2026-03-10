@@ -36,6 +36,13 @@ export default function TabsLayout() {
           tabBarIcon: ({ color }) => <IconSymbol size={28} name="info.circle.fill" color={color} />,
         }}
       />
+      <Tabs.Screen
+        name="thread"
+        options={{
+          title: 'Chat',
+          tabBarIcon: ({ color }) => <IconSymbol size={28} name='bubble.left.and.bubble.right.fill' color={color} />,
+        }}
+      />
     </Tabs>
   );
 }

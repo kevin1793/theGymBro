@@ -1,23 +1,23 @@
 import * as SQLite from 'expo-sqlite';
 
-// Open the database synchronously so 'db' is available immediately
-const db = SQLite.openDatabaseSync('workout.db');
+const db = SQLite.openDatabaseSync('workout_v2.db');
 
-export const getDb = () => db; 
-
+export const getDb = () => db;
 
 export async function initDatabase() {
-  // execAsync is perfect for schema creation
+  // Use a single execAsync to define the full modern schema
   await db.execAsync(`
     PRAGMA foreign_keys = ON;
+
     CREATE TABLE IF NOT EXISTS workout_history (
       id TEXT PRIMARY KEY NOT NULL,
       workoutId TEXT,
       workoutTitle TEXT,
-      duration INTEGER, -- Total seconds from your timer
-      createdAt INTEGER, -- The timestamp for the calendar
+      duration INTEGER,
+      createdAt INTEGER,
       totalVolume REAL,
-      FOREIGN KEY(workoutId) REFERENCES workouts(id) ON DELETE SET NULL
+      totalReps INTEGER DEFAULT 0,
+      totalDistance REAL DEFAULT 0
     );
 
     CREATE TABLE IF NOT EXISTS users (
@@ -25,9 +25,10 @@ export async function initDatabase() {
       firstName TEXT,
       lastName TEXT,
       email TEXT,
+      username TEXT,
       createdAt INTEGER,
-      isDirty INTEGER DEFAULT 0,
-      updatedAt INTEGER
+      updatedAt INTEGER,
+      isDirty INTEGER DEFAULT 0
     );
 
     CREATE TABLE IF NOT EXISTS goals (
@@ -52,7 +53,8 @@ export async function initDatabase() {
       title TEXT,
       description TEXT,
       createdAt INTEGER,
-      updatedAt INTEGER
+      updatedAt INTEGER,
+      lastCompletedAt INTEGER
     );
 
     CREATE TABLE IF NOT EXISTS sets (
@@ -63,83 +65,57 @@ export async function initDatabase() {
       distance REAL,
       minutes INTEGER,
       seconds INTEGER,
-      type TEXT,
-      FOREIGN KEY(exerciseId) REFERENCES exercises(id) ON DELETE CASCADE
+      type TEXT
     );
-    
   `);
-  try {
-    await db.execAsync(`ALTER TABLE workout_history ADD COLUMN totalReps INTEGER DEFAULT 0;`);
-    console.log("Migration: Added 'totalReps' to workout_history.");
-  } catch (e) {
-    console.log("'totalReps' column already exists, skipping migration.");
-  }
-  try {
-    // Check if the column exists by attempting to add it
-    // SQLite will throw an error if it already exists, which we catch safely
-    await db.execAsync(`ALTER TABLE workout_history ADD COLUMN totalDistance REAL DEFAULT 0;`);
-    console.log("Migration: Added 'totalDistance' to workout_history.");
-  } catch (e) {
-    console.log("'totalDistance' column already exists or table doesn't exist yet, skipping.");
-  }
 
-  try {
-    await db.execAsync(`ALTER TABLE users ADD COLUMN isDirty INTEGER DEFAULT 0;`);
-    console.log("Migration: Added isDirty column to users.");
-  } catch (e) {
-    // If the column already exists, SQLite will throw an error. We safely ignore it.
-  }
+  // Manual check for older installs that might be missing specific columns
+  // This is safer than the loop to avoid locking the DB during login
+  await db.execAsync(`
+    PRAGMA foreign_keys = ON;
 
-  try {
-    await db.execAsync(`ALTER TABLE sets ADD COLUMN type TEXT;`);
-    console.log("Migration: Added 'type' column to sets table.");
-  } catch (e) {
-    console.log("Column 'type' already exists, skipping migration.");
-  }
+    -- Add this table!
+    CREATE TABLE IF NOT EXISTS exercises (
+      id TEXT PRIMARY KEY NOT NULL,
+      workoutId TEXT,
+      name TEXT,
+      orderIndex INTEGER,
+      FOREIGN KEY(workoutId) REFERENCES workouts(id) ON DELETE CASCADE
+    );
 
-  try {
-    await db.execAsync(`ALTER TABLE workouts ADD COLUMN createdAt INTEGER;`);
-    await db.execAsync(`ALTER TABLE workouts ADD COLUMN updatedAt INTEGER;`);
-    await db.execAsync(`ALTER TABLE workouts ADD COLUMN lastCompletedAt INTEGER;`);
-    console.log('Migration: Added createdAt/updatedAt to workouts.');
-  } catch (e) {
-    // ignore errors if column already exists
+    -- Ensure your other tables (workout_history, users, goals, workouts, sets) are here...
+  `);
+  try { await db.execAsync("ALTER TABLE goals ADD COLUMN measurementType TEXT;"); } catch(e){}
+  try { await db.execAsync("ALTER TABLE goals ADD COLUMN secondaryValue REAL;"); } catch(e){}
+  try { await db.execAsync("ALTER TABLE goals ADD COLUMN secondaryUnit TEXT;"); } catch(e){}
+  try { await db.execAsync("ALTER TABLE users ADD COLUMN username TEXT;"); } catch(e){}
+  try { 
+    await db.execAsync("ALTER TABLE workouts ADD COLUMN lastCompletedAt INTEGER;"); 
+    console.log("Migration: Added lastCompletedAt to workouts");
+  } catch(e) {
+    // Column already exists, safe to ignore
   }
-  
 }
 
-// export async function run(query: string, params: any[] = []): Promise<void> {
-//   await db.runAsync(query, params);
-// }
+export async function run(query: string, params: any[] = []): Promise<void> {
+  await db.runAsync(query, params);
+}
 
 export async function getAll<T = any>(query: string, params: any[] = []): Promise<T[]> {
   return await db.getAllAsync<T>(query, params);
 }
 
-// export async function getOne<T = any>(query: string, params: any[] = []): Promise<T | null> {
-//   return await db.getFirstAsync<T>(query, params);
-// }
-
 export async function getOne<T = any>(query: string, params: any[] = []): Promise<T | null> {
-  try {
-    // getFirstAsync is the built-in Expo method for fetching a single row
-    const result = await db.getFirstAsync<T>(query, params);
-    return result;
-  } catch (error) {
-    console.error("SQL getOne Error:", error);
-    return null;
-  }
-}
-export async function run(query: string, params: any[] = []): Promise<void> {
-  await db.runAsync(query, params);
+  return await db.getFirstAsync<T>(query, params);
 }
 
-export const clearWorkoutHistory = async () => {
-  try {
-    await run(`DELETE FROM workout_history`, []);
-    console.log("Workout history cleared successfully.");
-  } catch (error) {
-    console.error("Error clearing workout history:", error);
-    throw error;
-  }
+export const clearAllLocalData = async () => {
+  // Use a transaction to ensure all tables are wiped together
+  await db.withTransactionAsync(async () => {
+    await db.runAsync(`DELETE FROM workout_history`);
+    await db.runAsync(`DELETE FROM goals`);
+    await db.runAsync(`DELETE FROM workouts`);
+    await db.runAsync(`DELETE FROM sets`);
+    await db.runAsync(`DELETE FROM users`);
+  });
 };

@@ -19,7 +19,8 @@ const MAPPING = {
   'person.fill': 'person',
   'chevron.left.forwardslash.chevron.right': 'code',
   'chevron.right': 'chevron-right',
-  'info.circle.fill':'info'
+  'info.circle.fill':'info',
+  'bubble.left.and.bubble.right.fill': 'forum', 
 } as IconMapping;
 
 /**

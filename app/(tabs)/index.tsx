@@ -6,7 +6,7 @@ import { getUser, saveUser } from '@/repositories/usersRepo';
 import { deleteBrokenWorkouts, getWorkoutsWithRelations } from '@/repositories/workoutRepo';
 import { formatTime } from '@/utils/helper';
 import { useFocusEffect, useRouter } from 'expo-router';
-import { doc, getDoc } from 'firebase/firestore';
+import { doc, getDoc, onSnapshot } from 'firebase/firestore';
 import { useCallback, useEffect, useState } from 'react';
 import {
   ActivityIndicator,
@@ -38,6 +38,7 @@ export default function Home() {
   // const [workouts, setWorkouts] = useState<Workout[]>([]);
 
   const loadLocalData = useCallback(async () => {
+    console.log('Dashboard - loadLocalData',)
     try {
       // Run cleanups
       await deleteBrokenGoals();
@@ -80,69 +81,82 @@ export default function Home() {
   }, [setGoals, setWorkouts]);
 
   useFocusEffect(
-      useCallback(() => {
-        loadLocalData();
-        const cleanup = async () => {
-          await deleteBrokenGoals();
-          await deleteBrokenWorkouts();
-        };
+    useCallback(() => {
+      loadLocalData();
+      const cleanup = async () => {
+        await deleteBrokenGoals();
+        await deleteBrokenWorkouts();
+      };
 
-        cleanup();
-      }, [loadLocalData])
+      cleanup();
+    }, [loadLocalData])
   );
 
-  useEffect(() => {
-    const loadLocalData = async () => {
-      await deleteBrokenGoals(); // Run cleanup
-      await deleteBrokenWorkouts(); // Run cleanup
+// 3. The "Master" Effect (Keep this one)
+useEffect(() => {
+  let isMounted = true;
+  let unsubscribe: (() => void) | null = null;
 
-      setLoading(true);
+  const loadData = async () => {
+    if (isMounted) setLoading(true); 
 
-      try {
-        const uid = auth.currentUser?.uid;
-        if (!uid) return;
+    // This 1200ms delay is your "Shield" against the Login Screen Sync
+    await new Promise(resolve => setTimeout(resolve, 1200)); 
+    
+    try {
+      const uid = auth.currentUser?.uid;
+      if (!uid || !isMounted) return;
 
-        // Load goals
-        const goalsList = await getActiveGoals();
+      // SEQUENTIAL CALLS ONLY
+      await deleteBrokenGoals();
+      await deleteBrokenWorkouts();
+
+      const goalsList = await getActiveGoals();
+      const workoutsList = await getWorkoutsWithRelations();
+
+      if (isMounted) {
         setGoals(goalsList);
-        
-
-        // Load workouts
-        const workoutsList = await getWorkoutsWithRelations();
         setWorkouts(workoutsList);
+      }
 
-        console.log('Loaded workoutsList from local DB:', workoutsList);
+      const userDocRef = doc(db, 'users', uid);
+      unsubscribe = onSnapshot(userDocRef, async (docSnap) => {
+        if (docSnap.exists() && isMounted) {
+          const data = docSnap.data();
+          const name = data.firstName || '';
+          setFirstName(name);
 
-        // Load user
-        let user = await getUser(uid);
-        if (!user) {
-          const userDoc = await getDoc(doc(db, 'users', uid));
-          if (userDoc.exists()) {
-            const data = userDoc.data();
-            user = {
+          try {
+            // We wrap this in a try/catch because onSnapshot can fire 
+            // while the initial loadData is still finishing a write
+            await saveUser({
               uid,
-              firstName: data.firstName || '',
+              firstName: name,
               lastName: data.lastName || '',
               email: auth.currentUser?.email || '',
-              createdAt: Date.now(),
+              createdAt: data.createdAt || Date.now(),
               updatedAt: Date.now(),
-            };
-            await saveUser(user);
+            });
+          } catch (dbError) {
+            console.log("Sync skipped: DB busy");
           }
         }
+      });
 
-        if (user) setFirstName(user.firstName);
+    } catch (error) {
+      console.error('Main Load Error:', error);
+    } finally {
+      if (isMounted) setLoading(false);
+    }
+  };
 
-      } catch (error) {
-        console.error('Error loading local data:', error);
-      } finally {
-        setLoading(false);
-      }
-    };
+  loadData();
 
-    loadLocalData();
-  }, []);
-
+  return () => {
+    isMounted = false;
+    if (unsubscribe) unsubscribe();
+  };
+}, [setGoals, setWorkouts]);
   const getGreeting = () => {
     const hour = new Date().getHours();
     const timeGreeting = hour < 12 ? 'Good Morning' : hour < 18 ? 'Good Afternoon' : 'Good Evening';
@@ -176,67 +190,62 @@ export default function Home() {
         </View>
 
         {goalList.length === 0 ? (
-        <Text style={styles.emptyText}>No goals yet my friend, try creating one!</Text>
-          ) : (
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 30 }}>
-              {goalList.map(goal => {
-                if (!goal) return null; 
-                let progressPercent = 0;
+          <Text style={styles.emptyText}>No goals yet my friend, try creating one!</Text>
+        ) : (
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 30 }}>
+            {goalList.map(goal => {
+              if (!goal) return null;
+              let progressPercent = 0;
 
-                if (goal.startValue != null && goal.currentValue != null && goal.targetValue != null) {
-                  if (goal.startValue < goal.targetValue) {
-                    // Higher is better (e.g., weight lifted)
-                    const totalGain = goal.targetValue - goal.startValue;
-                    const gained = goal.currentValue - goal.startValue;
-                    progressPercent = totalGain > 0 ? Math.min((gained / totalGain) * 100, 100) : 0;
-                  } else {
-                    // Lower is better (e.g., mile time)
-                    const totalReduction = goal.startValue - goal.targetValue;
-                    const reduced = goal.startValue - goal.currentValue;
-                    progressPercent = totalReduction > 0 ? Math.min((reduced / totalReduction) * 100, 100) : 0;
-                  }
+              if (goal.startValue != null && goal.currentValue != null && goal.targetValue != null) {
+                if (goal.startValue < goal.targetValue) {
+                  const totalGain = goal.targetValue - goal.startValue;
+                  const gained = goal.currentValue - goal.startValue;
+                  progressPercent = totalGain > 0 ? Math.min((gained / totalGain) * 100, 100) : 0;
+                } else {
+                  const totalReduction = goal.startValue - goal.targetValue;
+                  const reduced = goal.startValue - goal.currentValue;
+                  progressPercent = totalReduction > 0 ? Math.min((reduced / totalReduction) * 100, 100) : 0;
                 }
+              }
 
+              return (
+                <Pressable
+                  key={goal.id || Math.random().toString()}
+                  style={styles.card}
+                  onPress={() => router.push(`/goals/${goal.id}`)}
+                >
+                  <Text style={styles.cardTitle}>{goal.title}</Text>
+                  <Text style={styles.cardDescription}>Exercise: {goal.exercise}</Text>
 
-                return (
-                  <Pressable
-                    key={goal.id}
-                    style={styles.card}
-                    onPress={() => router.push(`/goals/${goal.id}`)}
-                  >
-                    <Text style={styles.cardTitle}>{goal.title}</Text>
-                    <Text style={styles.cardDescription}>Exercise: {goal.exercise}</Text>
-
-                    {/* Only render weights if startValue exists */}
-                    {goal.startValue != null && ( 
-                      <View style={styles.weightsRow}>
-                        <View style={styles.weightColumn}>
-                          <Text style={styles.weightLabel}>Starting</Text>
-                          <Text style={styles.weightValue}>{formatTime(goal.startValue, goal.unit)}</Text>
-                        </View>
-                        <View style={styles.weightColumn}>
-                          <Text style={styles.weightLabel}>Current</Text>
-                          <Text style={styles.weightValue}>{formatTime(goal.currentValue, goal.unit)}</Text>
-                        </View>
-                        <View style={styles.weightColumn}>
-                          <Text style={styles.weightLabel}>Goal</Text>
-                          <Text style={styles.weightValue}>{formatTime(goal.targetValue, goal.unit)}</Text>
-                        </View>
+                  {goal.startValue != null && (
+                    <View style={styles.weightsRow}>
+                      <View style={styles.weightColumn}>
+                        <Text style={styles.weightLabel}>Starting</Text>
+                        <Text style={styles.weightValue}>{formatTime(goal.startValue, goal.unit)}</Text>
                       </View>
-                    )}
-
-                    <View style={styles.progressRow}>
-                      <View style={styles.progressBar}>
-                        <View style={[styles.progressFill, { width: `${progressPercent}%` }]} />
+                      <View style={styles.weightColumn}>
+                        <Text style={styles.weightLabel}>Current</Text>
+                        <Text style={styles.weightValue}>{formatTime(goal.currentValue, goal.unit)}</Text>
                       </View>
-                      <Text style={styles.progressText}>{progressPercent.toFixed(0)}%</Text>
+                      <View style={styles.weightColumn}>
+                        <Text style={styles.weightLabel}>Goal</Text>
+                        <Text style={styles.weightValue}>{formatTime(goal.targetValue, goal.unit)}</Text>
+                      </View>
                     </View>
-                  </Pressable>
-                );
-              })}
-            </ScrollView>
-        )}
+                  )}
 
+                  <View style={styles.progressRow}>
+                    <View style={styles.progressBar}>
+                      <View style={[styles.progressFill, { width: `${progressPercent}%` }]} />
+                    </View>
+                    <Text style={styles.progressText}>{progressPercent.toFixed(0)}%</Text>
+                  </View>
+                </Pressable>
+              );
+            })}
+          </ScrollView>
+        )}
 
         {/* Workouts Section */}
         <View style={styles.sectionHeader}>
@@ -248,59 +257,55 @@ export default function Home() {
 
         {workouts.length === 0 ? (
           <Text style={styles.emptyText}>
-            Workouts look empty, let's create some and get you jacked!...or lean!
+            Workouts look empty, let's create some and get you jacked!
           </Text>
         ) : (
           <ScrollView horizontal showsHorizontalScrollIndicator={false}>
             {workouts.map((workout) => {
-              // Compute totals for the workout
+              if (!workout) return null;
+
               let totalVolume = 0;
               let totalReps = 0;
               let totalDistance = 0;
               let totalTime = 0;
 
-              if (workout.exercises) {
-                workout.exercises.forEach((ex: any) => {
-                  ex.sets?.forEach((set: any) => {
-                    const reps = Number(set.reps || 0);
-                    const weight = Number(set.weight || 0);
-                    const distance = Number(set.distance || 0);
-                    const minutes = Number(set.minutes || 0);
-                    const seconds = Number(set.seconds || 0);
-                    const time = minutes * 60 + seconds;
+              // Safe iteration using optional chaining and defaults
+              const exercises = workout.exercises || [];
+              
+              exercises.forEach((ex: any) => {
+                const category = (ex?.category || 'strength').toLowerCase(); // Default to strength if missing
+                const sets = ex?.sets || [];
 
-                    // Strength exercises
-                    if (!['cardio', 'core'].includes(ex.category.toLowerCase())) {
-                      totalVolume += reps * weight;
-                      totalReps += reps;
-                    }
+                sets.forEach((set: any) => {
+                  const reps = Number(set.reps || 0);
+                  const weight = Number(set.weight || 0);
+                  const distance = Number(set.distance || 0);
+                  const minutes = Number(set.minutes || 0);
+                  const seconds = Number(set.seconds || 0);
+                  const time = minutes * 60 + seconds;
 
-                    // Core
-                    if (ex.category.toLowerCase() === 'core') {
-                      totalReps += reps;
-                      totalTime += time;
-                    }
-
-                    // Cardio
-                    if (ex.category.toLowerCase() === 'cardio') {
-                      totalDistance += distance;
-                      totalTime += time;
-                    }
-                  });
+                  if (category === 'cardio') {
+                    totalDistance += distance;
+                    totalTime += time;
+                  } else if (category === 'core') {
+                    totalReps += reps;
+                    totalTime += time;
+                  } else {
+                    // Default Strength logic
+                    totalVolume += reps * weight;
+                    totalReps += reps;
+                  }
                 });
-              }
+              });
 
-              // Format totalTime into h:m:s
               const hours = Math.floor(totalTime / 3600);
-              const minutes = Math.floor((totalTime % 3600) / 60);
-              const seconds = totalTime % 60;
-              const timeString = `${hours > 0 ? hours + 'h ' : ''}${
-                minutes > 0 ? minutes + 'm ' : ''
-              }${seconds}s`;
+              const minutesCount = Math.floor((totalTime % 3600) / 60);
+              const secondsCount = totalTime % 60;
+              const timeString = `${hours > 0 ? hours + 'h ' : ''}${minutesCount > 0 ? minutesCount + 'm ' : ''}${secondsCount}s`;
 
               return (
                 <Pressable
-                  key={workout.id}
+                  key={workout.id || Math.random().toString()}
                   style={styles.card}
                   onPress={() => router.push(`/workouts/${workout.id}`)}
                 >
@@ -309,39 +314,28 @@ export default function Home() {
                     <Text style={styles.cardDescription}>{workout.description}</Text>
                   ) : null}
 
-                  {workout.exercises?.length > 0 && (
+                  {exercises.length > 0 && (
                     <>
+                      <Text style={styles.cardInfo}>Exercises: {exercises.length}</Text>
                       <Text style={styles.cardInfo}>
-                        Exercises: {workout.exercises.length}
-                      </Text>
-                      <Text style={styles.cardInfo}>
-                        Sets: {workout.exercises.reduce(
-                          (acc: number, ex: any) => acc + (ex.sets?.length || 0),
-                          0
-                        )}
+                        Sets: {exercises.reduce((acc: number, ex: any) => acc + (ex.sets?.length || 0), 0)}
                       </Text>
                     </>
                   )}
 
-                  {totalVolume > 0 && (
-                    <Text style={styles.cardInfo}>Volume: {totalVolume} {workout.weightUnit || 'lbs'}</Text>
-                  )}
+                  {totalVolume > 0 && <Text style={styles.cardInfo}>Volume: {totalVolume} {workout.weightUnit || 'lbs'}</Text>}
                   {totalReps > 0 && <Text style={styles.cardInfo}>Reps: {totalReps}</Text>}
-                  {totalDistance > 0 && (
-                    <Text style={styles.cardInfo}>
-                      Distance: {totalDistance} {workout.distanceUnit || 'miles'}
-                    </Text>
-                  )}
+                  {totalDistance > 0 && <Text style={styles.cardInfo}>Distance: {totalDistance} {workout.distanceUnit || 'miles'}</Text>}
                   {totalTime > 0 && <Text style={styles.cardInfo}>Time: {timeString}</Text>}
                 </Pressable>
               );
             })}
           </ScrollView>
         )}
-
       </ScrollView>
     </SafeAreaView>
   );
+
 }
 
 const styles = StyleSheet.create({

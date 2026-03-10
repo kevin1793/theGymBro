@@ -29,3 +29,15 @@ export const formatHMS = (seconds: number) => {
   if (s > 0) str += `${s}s`;
   return str.trim() || '0s';
 };
+
+export const formatPostDate = (timestamp: any) => {
+  if (!timestamp) return '...';
+  const date = timestamp.toDate ? timestamp.toDate() : new Date(timestamp);
+  return date.toLocaleDateString([], { 
+    year: 'numeric', // Added year here
+    month: 'short', 
+    day: 'numeric', 
+    hour: '2-digit', 
+    minute: '2-digit' 
+  });
+};
