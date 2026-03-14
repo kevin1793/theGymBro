@@ -65,11 +65,11 @@ export default function UpdatesPage() {
           </View>
         ))}
 
-        <View style={styles.missionCard}>
+        {/* <View style={styles.missionCard}>
           <ThemedText style={styles.missionText}>
             Every update is built based on lifter feedback. Have a request? Let us know.
           </ThemedText>
-        </View>
+        </View> */}
 
         {/* Instagram Link */}
         <Pressable 
@@ -79,7 +79,8 @@ export default function UpdatesPage() {
             { opacity: pressed ? 0.6 : 1 }
           ]}
         >
-          <ThemedText style={styles.socialText}>Follow for updates: </ThemedText>
+          <ThemedText style={styles.socialText}>Questions, feedback, or requests for the app? </ThemedText>
+          <ThemedText style={styles.socialText}>Send me a message</ThemedText>
           <ThemedText style={styles.handleText}>@kevvey_kev</ThemedText>
         </Pressable>
 
@@ -117,13 +118,30 @@ const styles = StyleSheet.create({
     borderWidth: 1, borderColor: '#333',
   },
   missionText: { color: '#666', fontSize: 13, textAlign: 'center', fontStyle: 'italic' },
+  // socialLink: {
+  //   marginTop: 30,
+  //   flexDirection: 'row',
+  //   justifyContent: 'center',
+  //   alignItems: 'center',
+  //   paddingVertical: 15,
+  // },
+  // socialText: { color: '#777', fontSize: 14 },
+  // handleText: { color: '#4CAF50', fontSize: 14, fontWeight: '700' },
   socialLink: {
-    marginTop: 30,
-    flexDirection: 'row',
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingVertical: 15,
-  },
-  socialText: { color: '#777', fontSize: 14 },
-  handleText: { color: '#4CAF50', fontSize: 14, fontWeight: '700' },
+  marginTop: 40,
+  alignItems: 'center', // Centers the text lines
+  paddingVertical: 15,
+  gap: 4, // Adds a tiny bit of space between the lines
+},
+socialText: { 
+  color: '#777', 
+  fontSize: 14,
+  textAlign: 'center' 
+},
+handleText: { 
+  color: '#4CAF50', 
+  fontSize: 16, // Made slightly bigger for emphasis
+  fontWeight: '700',
+  marginTop: 4 
+},
 });
