@@ -59,18 +59,18 @@ export default function GlobalChat() {
     setTimeout(() => setRefreshing(false), 1000);
   }, []);
 
-const handleSendPost = async () => {
+  const handleSendPost = async () => {
     const uid = auth.currentUser?.uid;
     if (!uid) return;
 
     try {
-      // 1. Fetch latest user status
+      // 1. Fetch latest user data (Checks ban AND gets latest username)
       const userDoc = await getDoc(doc(db, 'users', uid));
       const userData = userDoc.data();
 
+      // Check for ban
       if (userData?.banUntil && userData.banUntil > Date.now()) {
         const unlockDate = new Date(userData.banUntil).toLocaleString();
-        // Updated to pass the message directly to openModal
         openModal(
           `You are banned from posting until: \n${unlockDate}`,
           () => setModalVisible(false),
@@ -80,15 +80,22 @@ const handleSendPost = async () => {
         return;
       }
 
-      // 2. If not banned
+      // 2. Use the username directly from the fresh userData fetch
+      // Fallback to the current state, then 'Gym Member' if all else fails
+      const latestUsername = userData?.username || username || 'Gym Member';
+
       if (inputText.trim()) {
-        await createPost(inputText, username);
+        await createPost(inputText, latestUsername); // Pass the fresh name here
         setInputText('');
+        
+        // Optional: Sync the local state so the next post is also ready
+        if (userData?.username) setUsername(userData.username);
       }
     } catch (error) {
       console.error("Post Error:", error);
     }
   };
+
 
 
   const showOptions = (post: any) => {

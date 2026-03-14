@@ -24,8 +24,14 @@ export const AppModal = ({
 
   return (
     <Modal animationType="slide" transparent visible={visible} onRequestClose={onClose}>
-      <View style={styles.modalOverlay}>
-        <View style={styles.modalCard}>
+      {/* 1. The Overlay Pressable: Catches taps outside the card */}
+      <Pressable style={styles.modalOverlay} onPress={onClose}>
+        
+        {/* 2. The Card Pressable: Stops the "onClose" event from bubbling up */}
+        <Pressable 
+          style={styles.modalCard} 
+          onPress={(e) => e.stopPropagation()} // Prevents closing when clicking the card itself
+        >
           <Text style={styles.modalTitle}>{title}</Text>
 
           <View style={styles.modalButtons}>
@@ -39,11 +45,13 @@ export const AppModal = ({
               </Text>
             </Pressable>
           </View>
-        </View>
-      </View>
+        </Pressable>
+
+      </Pressable>
     </Modal>
   );
 };
+
 
 const styles = StyleSheet.create({
   modalOverlay: {

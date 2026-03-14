@@ -92,71 +92,65 @@ export default function Home() {
     }, [loadLocalData])
   );
 
-// 3. The "Master" Effect (Keep this one)
-useEffect(() => {
-  let isMounted = true;
-  let unsubscribe: (() => void) | null = null;
+  // 3. The "Master" Effect (Keep this one)
+  // Inside Home.tsx - Replace your "Master Effect"
+  useEffect(() => {
+    let isMounted = true;
+    let unsubscribe: (() => void) | null = null;
 
-  const loadData = async () => {
-    if (isMounted) setLoading(true); 
-
-    // This 1200ms delay is your "Shield" against the Login Screen Sync
-    await new Promise(resolve => setTimeout(resolve, 1200)); 
-    
-    try {
+    const setupData = async () => {
       const uid = auth.currentUser?.uid;
-      if (!uid || !isMounted) return;
+      if (!uid) return;
 
-      // SEQUENTIAL CALLS ONLY
-      await deleteBrokenGoals();
-      await deleteBrokenWorkouts();
-
+      // 1. Initial Local Load
       const goalsList = await getActiveGoals();
       const workoutsList = await getWorkoutsWithRelations();
+      const localUser = await getUser(uid);
 
       if (isMounted) {
         setGoals(goalsList);
         setWorkouts(workoutsList);
+        if (localUser) setFirstName(localUser.firstName);
+        setLoading(false);
       }
 
+      // 2. Real-time Firebase Listener
       const userDocRef = doc(db, 'users', uid);
       unsubscribe = onSnapshot(userDocRef, async (docSnap) => {
         if (docSnap.exists() && isMounted) {
           const data = docSnap.data();
-          const name = data.firstName || '';
-          setFirstName(name);
+          const updatedName = data.firstName || '';
+          
+          // Update State immediately for UI snappiness
+          setFirstName(updatedName);
 
+          // Update Local Repository so it persists
           try {
-            // We wrap this in a try/catch because onSnapshot can fire 
-            // while the initial loadData is still finishing a write
             await saveUser({
               uid,
-              firstName: name,
+              firstName: updatedName,
               lastName: data.lastName || '',
               email: auth.currentUser?.email || '',
               createdAt: data.createdAt || Date.now(),
               updatedAt: Date.now(),
             });
-          } catch (dbError) {
-            console.log("Sync skipped: DB busy");
+          } catch (e) {
+            console.log("Local save deferred");
           }
         }
       });
+    };
 
-    } catch (error) {
-      console.error('Main Load Error:', error);
-    } finally {
-      if (isMounted) setLoading(false);
-    }
-  };
+    setupData();
 
-  loadData();
+    return () => {
+      isMounted = false;
+      if (unsubscribe) unsubscribe();
+    };
+  }, [setGoals, setWorkouts]);
 
-  return () => {
-    isMounted = false;
-    if (unsubscribe) unsubscribe();
-  };
-}, [setGoals, setWorkouts]);
+
+
   const getGreeting = () => {
     const hour = new Date().getHours();
     const timeGreeting = hour < 12 ? 'Good Morning' : hour < 18 ? 'Good Afternoon' : 'Good Evening';

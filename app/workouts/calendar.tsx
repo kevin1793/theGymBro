@@ -10,11 +10,13 @@ export default function WorkoutCalendar() {
   const [history, setHistory] = useState<any[]>([]);
   const [markedDates, setMarkedDates] = useState({});
   const [showClearModal, setShowClearModal] = useState(false);
+  
+  // Track the visible month (defaults to current month "YYYY-MM")
+  const [currentMonth, setCurrentMonth] = useState(new Date().toISOString().split('-').slice(0, 2).join('-'));
 
   const handleClearAll = async () => {
     await clearWorkoutHistory();
     setShowClearModal(false);
-    // Optional: Refresh your state or redirect
     router.replace('/(tabs)'); 
   };
 
@@ -23,9 +25,7 @@ export default function WorkoutCalendar() {
       const loadHistory = async () => {
         const data = await getAll(`SELECT * FROM workout_history ORDER BY createdAt DESC`);
         setHistory(data);
-        console.log('Workout History Data',data)
 
-        // Map for calendar dots
         const marks: any = {};
         data.forEach((h: any) => {
           const dateStr = new Date(h.createdAt).toISOString().split('T')[0];
@@ -37,26 +37,32 @@ export default function WorkoutCalendar() {
     }, [])
   );
 
-  // Calculate Monthly Stats
+  // Filter stats based on the visible month
   const stats = useMemo(() => {
     let totalVol = 0;
     let totalDist = 0;
     let totalReps = 0;
+    let count = 0;
 
     history.forEach((h: any) => {
-      totalVol += (h.totalVolume || 0);
-      totalDist += (h.totalDistance || 0);
-      // Note: If you add a totalReps column to history later, sum it here
-      totalReps += (h.totalReps || 0); 
+      const workoutDate = new Date(h.createdAt).toISOString().split('-').slice(0, 2).join('-');
+      
+      // Only sum data if it matches the month shown on the calendar
+      if (workoutDate === currentMonth) {
+        count++;
+        totalVol += (h.totalVolume || 0);
+        totalDist += (h.totalDistance || 0);
+        totalReps += (h.totalReps || 0); 
+      }
     });
 
     return {
-      count: history.length,
+      count,
       volume: totalVol,
       distance: totalDist,
       reps: totalReps,
     };
-  }, [history]);
+  }, [history, currentMonth]); // Re-run when history OR month changes
 
   const formatDuration = (sec: number) => `${Math.floor(sec / 60)}m ${sec % 60}s`;
 
@@ -74,31 +80,13 @@ export default function WorkoutCalendar() {
         gestureEnabled: false, 
       }} />
 
-        {/* Clear history */}
-      <View>
-        <Pressable onPress={() => setShowClearModal(true)} style={styles.dangerButton}>
-          <Text style={{ color: '#ff4444' }}>Clear All History</Text>
-        </Pressable>
-
-        <AppModal
-          visible={showClearModal}
-          variant="danger"
-          title="Clear All History?"
-          confirmText="Clear Everything"
-          cancelText="Keep My Data"
-          onClose={() => setShowClearModal(false)}
-          onConfirm={handleClearAll}
-        />
-      </View>
-
       <FlatList
-        data={history.slice(0, 10)} // Show last 10
+        data={history.slice(0, 10)} 
         keyExtractor={(item) => item.id}
         ListHeaderComponent={
           <>
             <Calendar
               theme={{
-                // Colors
                 calendarBackground: '#1f1f1f',
                 dayTextColor: '#fff',
                 todayTextColor: '#4CAF50',
@@ -106,23 +94,21 @@ export default function WorkoutCalendar() {
                 arrowColor: '#4CAF50',
                 textDisabledColor: '#444',
                 dotColor: '#4CAF50',
-                
-                // Font Styling to match your headers and stats
                 textDayFontSize: 14,
                 textMonthFontSize: 16,
                 textDayHeaderFontSize: 12,
-                
                 textDayFontWeight: '500',
                 textMonthFontWeight: '700',
                 textDayHeaderFontWeight: '700',
-                
-                // Matching the "StatLabel" style for day headers (Mon, Tue, etc.)
                 textSectionTitleColor: '#888', 
               }}
               markedDates={markedDates}
               style={styles.calendar}
+              // Update the state whenever the user swipes or arrows to a new month
+              onMonthChange={(month) => {
+                setCurrentMonth(month.dateString.split('-').slice(0, 2).join('-'));
+              }}
             />
-
 
             <View style={styles.statsGrid}>
               <View style={styles.statItem}>
@@ -140,13 +126,11 @@ export default function WorkoutCalendar() {
                 <Text style={styles.statValue}>{stats.distance.toFixed(1)}mi</Text>
               </View>
 
-              {/* Only show if you decide to track reps in history */}
               <View style={styles.statItem}>
                 <Text style={styles.statLabel}>TOTAL REPS</Text>
                 <Text style={styles.statValue}>{stats.reps.toLocaleString()}</Text>
               </View>
             </View>
-
 
             <Text style={styles.sectionTitle}>Recent Activity</Text>
           </>
@@ -160,20 +144,28 @@ export default function WorkoutCalendar() {
             <Text style={styles.historyVol}>
               {[
                 item.totalVolume > 0 ? `${item.totalVolume.toLocaleString()} lbs` : null,
-                item.totalDistance > 0 
-                  ? `${item.totalDistance.toLocaleString()} ${item.totalDistance === 1 ? 'mile' : 'miles'}` 
-                  : null,
+                item.totalDistance > 0 ? `${item.totalDistance.toFixed(1)} mi` : null,
                 item.totalReps > 0 ? `${item.totalReps.toLocaleString()} reps` : null
-              ]
-                .filter(Boolean)
-                .join(' • ')}
+              ].filter(Boolean).join(' • ')}
             </Text>
-
-
           </View>
         )}
+        ListFooterComponent={
+          <Pressable onPress={() => setShowClearModal(true)} style={styles.dangerButton}>
+            <Text style={{ color: '#ff4444', textAlign: 'center', marginVertical: 20 }}>Clear All History</Text>
+          </Pressable>
+        }
       />
 
+      <AppModal
+        visible={showClearModal}
+        variant="danger"
+        title="Clear All History?"
+        confirmText="Clear Everything"
+        cancelText="Keep My Data"
+        onClose={() => setShowClearModal(false)}
+        onConfirm={handleClearAll}
+      />
     </View>
   );
 }
@@ -181,9 +173,6 @@ export default function WorkoutCalendar() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#121212' },
   calendar: { borderRadius: 12, margin: 16, backgroundColor: '#1f1f1f' },
-  statsRow: { flexDirection: 'row', justifyContent: 'space-around', marginHorizontal: 16, marginBottom: 20 },
-  statBox: { alignItems: 'center', backgroundColor: '#1f1f1f', padding: 15, borderRadius: 12, width: '45%' },
-  statNum: { color: '#4CAF50', fontSize: 20, fontWeight: 'bold' },
   sectionTitle: { color: '#fff', fontSize: 18, fontWeight: 'bold', marginLeft: 16, marginBottom: 12 },
   historyCard: { 
     flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
@@ -191,10 +180,10 @@ const styles = StyleSheet.create({
   },
   historyTitle: { color: '#fff', fontSize: 16, fontWeight: '600' },
   historySub: { color: '#777', fontSize: 12, marginTop: 4 },
-  historyVol: { color: '#4CAF50', fontWeight: 'bold' },
-    statsGrid: {
+  historyVol: { color: '#4CAF50', fontWeight: 'bold', fontSize: 13 },
+  statsGrid: {
     flexDirection: 'row',
-    flexWrap: 'wrap', // Allows them to wrap to a second line if needed
+    flexWrap: 'wrap',
     justifyContent: 'space-between',
     marginHorizontal: 16,
     marginBottom: 20,
@@ -204,7 +193,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#1f1f1f',
     padding: 12,
     borderRadius: 12,
-    width: '48%', // Fits 2 per row
+    width: '48%',
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1,
@@ -222,5 +211,8 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: 'bold',
   },
-
+  dangerButton: {
+    marginTop: 10,
+    padding: 10,
+  }
 });

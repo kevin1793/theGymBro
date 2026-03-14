@@ -1,4 +1,3 @@
-import { AppModal } from '@/components/AppModal';
 import { auth, db } from '@/lib/firebase';
 import { useRouter } from 'expo-router';
 import { signOut } from 'firebase/auth';
@@ -11,7 +10,7 @@ export default function Profile() {
   const router = useRouter();
   const [loading, setLoading] = useState(true);
   const [isEditing, setIsEditing] = useState(false);
-  const [modalVisible, setModalVisible] = useState(false);
+  // REMOVED: modalVisible state
   const [isSyncing, setIsSyncing] = useState(false);
 
   const [userData, setUserData] = useState<{
@@ -19,11 +18,10 @@ export default function Profile() {
     lastName: string;
     email: string;
     username?: string;
-    isFlagged?: boolean;    // Add this
-    banUntil?: number;      // Add this
+    isFlagged?: boolean;
+    banUntil?: number;
   } | null>(null);
 
-  // States for the edit form
   const [editFirst, setEditFirst] = useState('');
   const [editLast, setEditLast] = useState('');
   const [editUser, setEditUser] = useState('');
@@ -39,7 +37,6 @@ export default function Profile() {
         if (docSnap.exists()) {
           const data = docSnap.data() as any;
           setUserData(data);
-          // Pre-fill edit states
           setEditFirst(data.firstName || '');
           setEditLast(data.lastName || '');
           setEditUser(data.username || '');
@@ -70,7 +67,7 @@ export default function Profile() {
 
       setUserData({ ...userData, ...updatedData } as any);
       setIsEditing(false);
-      setModalVisible(true);
+      // REMOVED: setModalVisible(true)
     } catch (error) {
       console.error("Update failed", error);
     }
@@ -81,14 +78,10 @@ export default function Profile() {
   const handleLogout = async () => {
     setIsSyncing(true);
     try {
-      // This now pushes Goals, Workouts, AND History
-      // await syncLocalDataToCloud();
-      
       await signOut(auth);
       router.replace('/login');
     } catch (error) {
       console.error('Final sync failed:', error);
-      // Logout anyway to ensure user isn't stuck
       await signOut(auth);
       router.replace('/login');
     } finally {
@@ -96,17 +89,10 @@ export default function Profile() {
     }
   };
 
-
   return (
     <SafeAreaView style={styles.container}>
-      <AppModal 
-        visible={modalVisible}
-        title="Profile Updated Successfully!"
-        onConfirm={() => setModalVisible(false)}
-        onClose={() => setModalVisible(false)}
-      />
+      {/* REMOVED: <AppModal /> component */}
       
-      {/* Profile Header */}
       <Text style={styles.name}>{userData?.firstName} {userData?.lastName}</Text>
       <Text style={styles.email}>{userData?.email}</Text>
 
@@ -123,7 +109,6 @@ export default function Profile() {
       )}
 
       <View style={styles.infoContainer}>
-        {/* First Name Field */}
         <View style={styles.infoBox}>
           <Text style={styles.infoLabel}>First Name</Text>
           {isEditing ? (
@@ -138,7 +123,6 @@ export default function Profile() {
           )}
         </View>
 
-        {/* Last Name Field */}
         <View style={styles.infoBox}>
           <Text style={styles.infoLabel}>Last Name</Text>
           {isEditing ? (
@@ -153,7 +137,6 @@ export default function Profile() {
           )}
         </View>
 
-        {/* Username Field */}
         <View style={styles.infoBox}>
           <Text style={styles.infoLabel}>Username</Text>
           {isEditing ? (
@@ -169,7 +152,6 @@ export default function Profile() {
           )}
         </View>
 
-        {/* Action Buttons */}
         <View style={styles.buttonRow}>
           {isEditing ? (
             <>
@@ -198,7 +180,6 @@ export default function Profile() {
         </View>
       </View>
 
-      {/* Footer / Logout */}
       <View style={styles.footer}>
         <Pressable 
           style={[styles.logoutButton, isSyncing && { opacity: 0.5 }]} 
@@ -212,9 +193,7 @@ export default function Profile() {
       </View>
     </SafeAreaView>
   );
-
 }
-
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#121212', alignItems: 'center', padding: 20 },
@@ -228,19 +207,20 @@ const styles = StyleSheet.create({
   logoutButton: { borderWidth: 1, borderColor: '#ff4444', paddingVertical: 8, paddingHorizontal: 24, borderRadius: 20 },
   logoutText: { color: '#ff4444', fontWeight: '600', fontSize: 14 },
   editInput: { color: '#fff', fontSize: 16, fontWeight: 'bold', borderBottomWidth: 1, borderBottomColor: '#4CAF50', paddingVertical: 4 },
+  buttonRow: { flexDirection: 'row', gap: 10, marginTop: 10 }, // Added missing buttonRow style
   editButton: {
-    flex: 1, // This makes buttons equal width in a row
+    flex: 1,
     backgroundColor: '#333',
-    paddingVertical: 14, // Slightly taller for better touch target
+    paddingVertical: 14,
     borderRadius: 10,
     alignItems: 'center',
     justifyContent: 'center',
   },
   saveBtn: {
-    backgroundColor: '#4CAF50', // Success Green
+    backgroundColor: '#4CAF50',
   },
   cancelBtn: {
-    backgroundColor: '#2A2A2A', // Subtle Dark Gray
+    backgroundColor: '#2A2A2A',
     borderWidth: 1,
     borderColor: '#444',
   },
@@ -248,13 +228,5 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontWeight: '700',
     fontSize: 16,
-  },
-   buttonRow: {
-    flexDirection: 'row',
-    width: '100%',
-    gap: 12,           // Space between the buttons
-    marginTop: 20,     // Space above the button section
-    alignItems: 'center',
-    justifyContent: 'center',
   },
 });
