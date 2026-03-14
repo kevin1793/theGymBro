@@ -3,16 +3,25 @@ import { clearWorkoutHistory, getAll } from '@/database/db';
 import { Ionicons } from '@expo/vector-icons';
 import { router, Stack, useFocusEffect } from 'expo-router';
 import { useCallback, useMemo, useState } from 'react';
-import { FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
+import { FlatList, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Calendar } from 'react-native-calendars';
+
+const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+const YEARS = Array.from({ length: 10 }, (_, i) => new Date().getFullYear() - i + 2); // Includes 2 future years
 
 export default function WorkoutCalendar() {
   const [history, setHistory] = useState<any[]>([]);
   const [markedDates, setMarkedDates] = useState({});
   const [showClearModal, setShowClearModal] = useState(false);
   
-  // Track the visible month (defaults to current month "YYYY-MM")
+  // Picker States
+  const [isPickerVisible, setIsPickerVisible] = useState(false);
+  // Default to YYYY-MM
   const [currentMonth, setCurrentMonth] = useState(new Date().toISOString().split('-').slice(0, 2).join('-'));
+  
+  // Temporary states for the Modal picker
+  const [tempMonth, setTempMonth] = useState(new Date().getMonth());
+  const [tempYear, setTempYear] = useState(new Date().getFullYear());
 
   const handleClearAll = async () => {
     await clearWorkoutHistory();
@@ -25,7 +34,6 @@ export default function WorkoutCalendar() {
       const loadHistory = async () => {
         const data = await getAll(`SELECT * FROM workout_history ORDER BY createdAt DESC`);
         setHistory(data);
-
         const marks: any = {};
         data.forEach((h: any) => {
           const dateStr = new Date(h.createdAt).toISOString().split('T')[0];
@@ -37,17 +45,10 @@ export default function WorkoutCalendar() {
     }, [])
   );
 
-  // Filter stats based on the visible month
   const stats = useMemo(() => {
-    let totalVol = 0;
-    let totalDist = 0;
-    let totalReps = 0;
-    let count = 0;
-
+    let totalVol = 0, totalDist = 0, totalReps = 0, count = 0;
     history.forEach((h: any) => {
       const workoutDate = new Date(h.createdAt).toISOString().split('-').slice(0, 2).join('-');
-      
-      // Only sum data if it matches the month shown on the calendar
       if (workoutDate === currentMonth) {
         count++;
         totalVol += (h.totalVolume || 0);
@@ -55,16 +56,22 @@ export default function WorkoutCalendar() {
         totalReps += (h.totalReps || 0); 
       }
     });
+    return { count, volume: totalVol, distance: totalDist, reps: totalReps };
+  }, [history, currentMonth]);
 
-    return {
-      count,
-      volume: totalVol,
-      distance: totalDist,
-      reps: totalReps,
-    };
-  }, [history, currentMonth]); // Re-run when history OR month changes
+  const handleConfirmPicker = () => {
+    const formattedDate = `${tempYear}-${String(tempMonth + 1).padStart(2, '0')}`;
+    setCurrentMonth(formattedDate);
+    setIsPickerVisible(false);
+  };
 
   const formatDuration = (sec: number) => `${Math.floor(sec / 60)}m ${sec % 60}s`;
+
+  // Helper to get month name for the header
+  const getHeaderLabel = () => {
+    const [year, month] = currentMonth.split('-');
+    return `${MONTHS[parseInt(month) - 1]} ${year}`;
+  };
 
   return (
     <View style={styles.container}>
@@ -86,6 +93,9 @@ export default function WorkoutCalendar() {
         ListHeaderComponent={
           <>
             <Calendar
+              // Syncs the calendar view and arrow logic with our state
+              current={`${currentMonth}-01`}
+              key={currentMonth} // Forces arrows to reset their internal calculation
               theme={{
                 calendarBackground: '#1f1f1f',
                 dayTextColor: '#fff',
@@ -95,7 +105,7 @@ export default function WorkoutCalendar() {
                 textDisabledColor: '#444',
                 dotColor: '#4CAF50',
                 textDayFontSize: 14,
-                textMonthFontSize: 16,
+                textMonthFontSize: 18,
                 textDayHeaderFontSize: 12,
                 textDayFontWeight: '500',
                 textMonthFontWeight: '700',
@@ -104,32 +114,22 @@ export default function WorkoutCalendar() {
               }}
               markedDates={markedDates}
               style={styles.calendar}
-              // Update the state whenever the user swipes or arrows to a new month
               onMonthChange={(month) => {
                 setCurrentMonth(month.dateString.split('-').slice(0, 2).join('-'));
               }}
+              renderHeader={() => (
+                <Pressable onPress={() => setIsPickerVisible(true)} style={styles.headerButton}>
+                  <Text style={styles.headerText}>{getHeaderLabel()}</Text>
+                  <Ionicons name="chevron-down" size={16} color="#4CAF50" />
+                </Pressable>
+              )}
             />
 
             <View style={styles.statsGrid}>
-              <View style={styles.statItem}>
-                <Text style={styles.statLabel}>WORKOUTS</Text>
-                <Text style={styles.statValue}>{stats.count}</Text>
-              </View>
-              
-              <View style={styles.statItem}>
-                <Text style={styles.statLabel}>TOTAL LBS</Text>
-                <Text style={styles.statValue}>{stats.volume.toLocaleString()}</Text>
-              </View>
-
-              <View style={styles.statItem}>
-                <Text style={styles.statLabel}>DISTANCE</Text>
-                <Text style={styles.statValue}>{stats.distance.toFixed(1)}mi</Text>
-              </View>
-
-              <View style={styles.statItem}>
-                <Text style={styles.statLabel}>TOTAL REPS</Text>
-                <Text style={styles.statValue}>{stats.reps.toLocaleString()}</Text>
-              </View>
+              <View style={styles.statItem}><Text style={styles.statLabel}>WORKOUTS</Text><Text style={styles.statValue}>{stats.count}</Text></View>
+              <View style={styles.statItem}><Text style={styles.statLabel}>TOTAL LBS</Text><Text style={styles.statValue}>{stats.volume.toLocaleString()}</Text></View>
+              <View style={styles.statItem}><Text style={styles.statLabel}>DISTANCE</Text><Text style={styles.statValue}>{stats.distance.toFixed(1)}mi</Text></View>
+              <View style={styles.statItem}><Text style={styles.statLabel}>TOTAL REPS</Text><Text style={styles.statValue}>{stats.reps.toLocaleString()}</Text></View>
             </View>
 
             <Text style={styles.sectionTitle}>Recent Activity</Text>
@@ -142,27 +142,49 @@ export default function WorkoutCalendar() {
               <Text style={styles.historySub}>{new Date(item.createdAt).toLocaleDateString()} • {formatDuration(item.duration)}</Text>
             </View>
             <Text style={styles.historyVol}>
-              {[
-                item.totalVolume > 0 ? `${item.totalVolume.toLocaleString()} lbs` : null,
-                item.totalDistance > 0 ? `${item.totalDistance.toFixed(1)} mi` : null,
-                item.totalReps > 0 ? `${item.totalReps.toLocaleString()} reps` : null
-              ].filter(Boolean).join(' • ')}
+                {item.totalVolume > 0 ? `${item.totalVolume.toLocaleString()} lbs` : 
+                 item.totalDistance > 0 ? `${item.totalDistance.toFixed(1)} mi` : 
+                 `${item.totalReps} reps`}
             </Text>
           </View>
         )}
         ListFooterComponent={
-          <Pressable onPress={() => setShowClearModal(true)} style={styles.dangerButton}>
-            <Text style={{ color: '#ff4444', textAlign: 'center', marginVertical: 20 }}>Clear All History</Text>
+          <Pressable onPress={() => setShowClearModal(true)} style={{ marginVertical: 30 }}>
+            <Text style={{ color: '#ff4444', textAlign: 'center' }}>Clear All History</Text>
           </Pressable>
         }
       />
+
+      {/* Picker Modal injected via 'children' */}
+      <AppModal
+        visible={isPickerVisible}
+        title="Jump to Month"
+        confirmText="Select"
+        onClose={() => setIsPickerVisible(false)}
+        onConfirm={handleConfirmPicker}
+      >
+        <View style={styles.pickerContainer}>
+          <ScrollView style={styles.pickerList} showsVerticalScrollIndicator={false}>
+            {MONTHS.map((m, i) => (
+              <Pressable key={m} onPress={() => setTempMonth(i)} style={[styles.pickerItem, tempMonth === i && styles.pickerItemActive]}>
+                <Text style={[styles.pickerText, tempMonth === i && styles.pickerTextActive]}>{m}</Text>
+              </Pressable>
+            ))}
+          </ScrollView>
+          <ScrollView style={styles.pickerList} showsVerticalScrollIndicator={false}>
+            {YEARS.map(y => (
+              <Pressable key={y} onPress={() => setTempYear(y)} style={[styles.pickerItem, tempYear === y && styles.pickerItemActive]}>
+                <Text style={[styles.pickerText, tempYear === y && styles.pickerTextActive]}>{y}</Text>
+              </Pressable>
+            ))}
+          </ScrollView>
+        </View>
+      </AppModal>
 
       <AppModal
         visible={showClearModal}
         variant="danger"
         title="Clear All History?"
-        confirmText="Clear Everything"
-        cancelText="Keep My Data"
         onClose={() => setShowClearModal(false)}
         onConfirm={handleClearAll}
       />
@@ -173,46 +195,21 @@ export default function WorkoutCalendar() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#121212' },
   calendar: { borderRadius: 12, margin: 16, backgroundColor: '#1f1f1f' },
+  headerButton: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: '#2a2a2a', paddingVertical: 6, paddingHorizontal: 12, borderRadius: 20 },
+  headerText: { color: '#fff', fontSize: 16, fontWeight: 'bold' },
   sectionTitle: { color: '#fff', fontSize: 18, fontWeight: 'bold', marginLeft: 16, marginBottom: 12 },
-  historyCard: { 
-    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
-    backgroundColor: '#1a1a1a', padding: 16, marginHorizontal: 16, marginBottom: 10, borderRadius: 12 
-  },
+  historyCard: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#1a1a1a', padding: 16, marginHorizontal: 16, marginBottom: 10, borderRadius: 12 },
   historyTitle: { color: '#fff', fontSize: 16, fontWeight: '600' },
   historySub: { color: '#777', fontSize: 12, marginTop: 4 },
-  historyVol: { color: '#4CAF50', fontWeight: 'bold', fontSize: 13 },
-  statsGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    justifyContent: 'space-between',
-    marginHorizontal: 16,
-    marginBottom: 20,
-    gap: 10,
-  },
-  statItem: {
-    backgroundColor: '#1f1f1f',
-    padding: 12,
-    borderRadius: 12,
-    width: '48%',
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: '#2a2a2a',
-  },
-  statLabel: {
-    color: '#888',
-    fontSize: 10,
-    fontWeight: '800',
-    letterSpacing: 1,
-    marginBottom: 4,
-  },
-  statValue: {
-    color: '#4CAF50',
-    fontSize: 18,
-    fontWeight: 'bold',
-  },
-  dangerButton: {
-    marginTop: 10,
-    padding: 10,
-  }
+  historyVol: { color: '#4CAF50', fontWeight: 'bold' },
+  statsGrid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', marginHorizontal: 16, marginBottom: 20, gap: 10 },
+  statItem: { backgroundColor: '#1f1f1f', padding: 12, borderRadius: 12, width: '48%', alignItems: 'center', borderWidth: 1, borderColor: '#2a2a2a' },
+  statLabel: { color: '#888', fontSize: 10, fontWeight: '800', letterSpacing: 1, marginBottom: 4 },
+  statValue: { color: '#4CAF50', fontSize: 18, fontWeight: 'bold' },
+  pickerContainer: { flexDirection: 'row', height: 250 },
+  pickerList: { flex: 1 },
+  pickerItem: { paddingVertical: 12, alignItems: 'center', borderRadius: 8 },
+  pickerItemActive: { backgroundColor: 'rgba(76, 175, 80, 0.1)' },
+  pickerText: { color: '#888', fontSize: 16 },
+  pickerTextActive: { color: '#4CAF50', fontWeight: 'bold' },
 });

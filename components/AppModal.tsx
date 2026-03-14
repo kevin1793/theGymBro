@@ -8,7 +8,8 @@ interface AppModalProps {
   onConfirm: () => void;
   confirmText?: string;
   cancelText?: string;
-  variant?: 'success' | 'danger'; // Toggles Green vs Red
+  variant?: 'success' | 'danger';
+  children?: React.ReactNode; // ADDED: Allow custom content like pickers
 }
 
 export const AppModal = ({
@@ -19,20 +20,21 @@ export const AppModal = ({
   confirmText = 'Yes',
   cancelText = 'Cancel',
   variant = 'success',
-}) => {
+  children, // ADDED
+}: AppModalProps) => {
   const isDanger = variant === 'danger';
 
   return (
-    <Modal animationType="slide" transparent visible={visible} onRequestClose={onClose}>
-      {/* 1. The Overlay Pressable: Catches taps outside the card */}
+    <Modal animationType="fade" transparent visible={visible} onRequestClose={onClose}>
       <Pressable style={styles.modalOverlay} onPress={onClose}>
-        
-        {/* 2. The Card Pressable: Stops the "onClose" event from bubbling up */}
         <Pressable 
           style={styles.modalCard} 
-          onPress={(e) => e.stopPropagation()} // Prevents closing when clicking the card itself
+          onPress={(e) => e.stopPropagation()} 
         >
           <Text style={styles.modalTitle}>{title}</Text>
+
+          {/* ADDED: Render custom picker content if provided */}
+          {children && <View style={styles.customContent}>{children}</View>}
 
           <View style={styles.modalButtons}>
             <Pressable style={styles.modalButton} onPress={onClose}>
@@ -46,56 +48,60 @@ export const AppModal = ({
             </Pressable>
           </View>
         </Pressable>
-
       </Pressable>
     </Modal>
   );
 };
 
-
 const styles = StyleSheet.create({
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.7)',
+    backgroundColor: 'rgba(0,0,0,0.8)', // Darkened for better focus
     justifyContent: 'center',
     alignItems: 'center',
   },
   modalCard: {
-    width: '80%',
+    width: '85%',
     backgroundColor: '#1f1f1f',
     padding: 24,
     borderRadius: 20,
     alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#333',
   },
   modalTitle: {
     color: '#fff',
     fontSize: 18,
-    fontWeight: '600',
-    marginBottom: 24,
+    fontWeight: '700',
+    marginBottom: 15, // Reduced to accommodate children
     textAlign: 'center',
-    lineHeight: 24,
+  },
+  customContent: {
+    width: '100%',
+    marginBottom: 20, // Space before buttons
   },
   modalButtons: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     width: '100%',
+    marginTop: 10,
   },
   modalButton: {
-    paddingHorizontal: 10,
-    paddingVertical: 5,
+    paddingHorizontal: 15,
+    paddingVertical: 10,
   },
   confirmBaseText: {
     fontSize: 16,
     fontWeight: '700',
   },
   cancelText: {
-    color: '#aaa',
+    color: '#888',
     fontSize: 16,
   },
   saveText: {
-    color: '#4CAF50', // Green
+    color: '#4CAF50',
   },
   deleteText: {
-    color: '#ff4444', // Red
+    color: '#ff4444',
   },
 });
