@@ -1,9 +1,9 @@
 import { AppModal } from '@/components/AppModal';
+import { useReport } from '@/hooks/useReport'; // Import the hook
 import { auth, db } from '@/lib/firebase';
-import { addComment, deletePost, reportPost } from '@/repositories/threadRepo';
+import { addComment, deletePost } from '@/repositories/threadRepo';
 import { getUser } from '@/repositories/usersRepo';
-import { Ionicons } from '@expo/vector-icons';
-import MaterialIcons from '@expo/vector-icons/MaterialIcons';
+import { Ionicons, MaterialIcons } from '@expo/vector-icons';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { collection, doc, getDoc, onSnapshot, orderBy, query } from 'firebase/firestore';
 import { useEffect, useState } from 'react';
@@ -12,40 +12,26 @@ import { FlatList, KeyboardAvoidingView, Platform, Pressable, StyleSheet, Text, 
 export default function ThreadScreen() {
   const router = useRouter();
   const { id, userName, text, uid } = useLocalSearchParams();
+  const { reportModalVisible, setReportModalVisible, openReportModal, submitReport, ReasonPicker } = useReport();
   
   const [comments, setComments] = useState<any[]>([]);
   const [commentText, setCommentText] = useState('');
   const [currentUsername, setCurrentUsername] = useState<string | null>(null);
 
-  // Modal State
-  const [modalVisible, setModalVisible] = useState(false);
-  const [modalConfig, setModalConfig] = useState({
-    title: '',
-    onConfirm: () => {},
-    variant: 'success' as 'success' | 'danger',
-    confirmText: 'Yes'
-  });
+  // Standard Modal State (for Deleting)
+  const [deleteModalVisible, setDeleteModalVisible] = useState(false);
 
-  const openModal = (title: string, onConfirm: () => void, variant: 'success' | 'danger' = 'success', confirmText = 'Yes') => {
-    setModalConfig({ title, onConfirm, variant, confirmText });
-    setModalVisible(true);
-  };
-
-  // 1. Fetch profile on mount
   useEffect(() => {
     const fetchMyProfile = async () => {
       const user = auth.currentUser;
       if (user) {
         const profile = await getUser(user.uid);
-        if (profile) {
-          setCurrentUsername(profile.username || profile.firstName || "Gym Member");
-        }
+        if (profile) setCurrentUsername(profile.username || profile.firstName || "Gym Member");
       }
     };
     fetchMyProfile();
   }, []);
 
-  // 2. Listen for comments
   useEffect(() => {
     if (!id) return;
     const q = query(collection(db, 'posts', id as string, 'comments'), orderBy('createdAt', 'asc'));
@@ -55,105 +41,67 @@ export default function ThreadScreen() {
   }, [id]);
 
   const handleReply = async () => {
-    if (!commentText.trim()) return;
-
-    const userUid = auth.currentUser?.uid;
-    if (!userUid) return;
-
+    if (!commentText.trim() || !auth.currentUser) return;
     try {
-      const userDoc = await getDoc(doc(db, 'users', userUid));
+      const userDoc = await getDoc(doc(db, 'users', auth.currentUser.uid));
       const userData = userDoc.data();
-      
       const finalUsername = userData?.username || userData?.firstName || currentUsername || "Gym Member";
-
-      // Pass the UID into the comment so we can identify "You" later
-      await addComment(id as string, commentText, finalUsername, userUid); 
+      await addComment(id as string, commentText, finalUsername, auth.currentUser.uid); 
       setCommentText('');
-      
-      if (userData?.username || userData?.firstName) {
-        setCurrentUsername(userData.username || userData.firstName);
-      }
-    } catch (error) {
-      console.error("Reply Error:", error);
-    }
+    } catch (error) { console.error(error); }
   };
 
   const showOptions = () => {
-    const isMyPost = uid === auth.currentUser?.uid;
-
-    if (isMyPost) {
-      openModal(
-        "Delete this post forever?",
-        async () => {
-          await deletePost(id as string);
-          setModalVisible(false);
-          router.back();
-        },
-        'danger',
-        'Delete'
-      );
+    if (uid === auth.currentUser?.uid) {
+      setDeleteModalVisible(true);
     } else {
-      openModal(
-        "Report this post for review?",
-        async () => {
-          await reportPost(id as string, text as string, "User Flagged");
-          setModalVisible(false);
-        },
-        'success',
-        'Report'
-      );
+      openReportModal(id as string);
     }
   };
 
   return (
-    <KeyboardAvoidingView 
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined} 
-      style={{ flex: 1 }}
-      keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
-    >
+    <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }} keyboardVerticalOffset={90}>
       <View style={styles.container}>
-
-        <Stack.Screen
-          options={{
+        <Stack.Screen options={{
             headerLeft: () => (
-              <Pressable
-                onPress={() => {
-                  if (router.canGoBack()) {
-                    router.back(); // normal push stack
-                  } else {
-                    router.push('/'); // fallback if JS stack is empty
-                  }
-                }}
-                style={{ paddingHorizontal: 16 }}
-              >
+              <Pressable onPress={() => router.canGoBack() ? router.back() : router.push('/')} style={{ paddingHorizontal: 16 }}>
                 <Ionicons name="chevron-back" size={24} color="#fff" />
               </Pressable>
             ),
             title: '',
-            headerBackTitle: '',
-            headerBackTitleVisible: false,
             headerTintColor: '#fff',
             headerStyle: { backgroundColor: '#121212' },
+        }} />
+
+        {/* Delete Confirmation Modal */}
+        <AppModal 
+          visible={deleteModalVisible}
+          title="Delete this post forever?"
+          variant="danger"
+          confirmText="Delete"
+          onClose={() => setDeleteModalVisible(false)}
+          onConfirm={async () => {
+            await deletePost(id as string);
+            setDeleteModalVisible(false);
+            router.back();
           }}
         />
 
+        {/* Report Modal via Hook */}
         <AppModal 
-          visible={modalVisible}
-          title={modalConfig.title}
-          variant={modalConfig.variant}
-          confirmText={modalConfig.confirmText}
-          onClose={() => setModalVisible(false)}
-          onConfirm={modalConfig.onConfirm}
-        />
+          visible={reportModalVisible}
+          title="Report Post"
+          variant="danger"
+          confirmText="Submit Report"
+          onClose={() => setReportModalVisible(false)}
+          onConfirm={submitReport}
+        >
+          <ReasonPicker />
+        </AppModal>
 
         <View style={styles.mainPost}>
           <View style={styles.headerRow}>
-            <Text style={styles.postUser}>
-              {userName}
-              {uid === auth.currentUser?.uid && (
-                <Text style={styles.youTag}> (You)</Text>
-              )}
-            </Text>
+            <Text style={styles.postUser}>{userName}{uid === auth.currentUser?.uid && <Text style={styles.youTag}> (You)</Text>}</Text>
             <Pressable onPress={showOptions} style={{ padding: 5 }}>
               <MaterialIcons name="more-horiz" size={24} color="#888" />
             </Pressable>
@@ -167,33 +115,23 @@ export default function ThreadScreen() {
           contentContainerStyle={{ paddingBottom: 100 }}
           renderItem={({ item }) => (
             <View style={styles.commentItem}>
-              <Text style={styles.commentUser}>
-                {item.userName}
-                {item.uid === auth.currentUser?.uid && (
-                  <Text style={styles.youTagSmall}> (You)</Text>
-                )}
-              </Text>
+              <Text style={styles.commentUser}>{item.userName}{item.uid === auth.currentUser?.uid && <Text style={styles.youTagSmall}> (You)</Text>}</Text>
               <Text style={styles.commentText}>{item.text}</Text>
             </View>
           )}
         />
 
         <View style={styles.inputContainer}>
-          <TextInput 
-            style={styles.input} 
-            value={commentText} 
-            onChangeText={setCommentText} 
-            placeholder="Add a comment..."
-            placeholderTextColor="#666"
-          />
-          <Pressable onPress={handleReply} style={styles.sendButton}>
-            <Text style={{color: '#fff', fontWeight: 'bold'}}>Reply</Text>
-          </Pressable>
+          <TextInput style={styles.input} value={commentText} onChangeText={setCommentText} placeholder="Add a comment..." placeholderTextColor="#666" />
+          <Pressable onPress={handleReply} style={styles.sendButton}><Text style={{color: '#fff', fontWeight: 'bold'}}>Reply</Text></Pressable>
         </View>
       </View>
     </KeyboardAvoidingView>
   );
 }
+
+// ... styles remain the same
+
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#121212' },

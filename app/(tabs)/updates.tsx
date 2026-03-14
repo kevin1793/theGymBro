@@ -1,15 +1,8 @@
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
-import { IconSymbol, type IconSymbolName } from '@/components/ui/icon-symbol';
+import { IconSymbol } from '@/components/ui/icon-symbol';
 import { Fonts } from '@/constants/theme';
-import { ScrollView, StyleSheet, Text, View } from 'react-native';
-
-const UPDATES: Array<{ status: string; title: string; desc: string; icon: IconSymbolName }> = [
-  { status: 'Live', title: 'Calendar Tracking', desc: 'Full history with monthly stats and volume tracking.', icon: 'calendar' },
-  { status: 'In Progress', title: 'PR & Progression', desc: 'Visual charts for your 1RM and lift history.', icon: 'chart.line.uptrend.xyaxes' },
-  { status: 'Planned', title: 'Global Community', desc: 'Connect with other lifters and share routines.', icon: 'person.2.fill' },
-  { status: 'Planned', title: 'Profile Customization', desc: 'Custom avatars, bios, and public PR boards.', icon: 'person.crop.circle' },
-];
+import { Linking, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 const ROADMAP_DATA = [
   {
@@ -18,28 +11,25 @@ const ROADMAP_DATA = [
     items: [
       { title: 'Calendar History', desc: 'Monthly view of all past sessions with volume stats.', icon: 'calendar' },
       { title: 'Goal Tracking', desc: 'Set and track 1RMs, distance, and time goals.', icon: 'target' },
+      { title: 'Global Community', desc: 'Chat and share routines with other lifters.', icon: 'person.2.fill' },
       { title: 'Active Workout Mode', desc: 'Live stopwatch, rest tracking, and set-by-set checkoffs.', icon: 'play.circle.fill' },
     ]
   },
-  // {
-  //   status: 'In Progress',
-  //   color: '#2196F3',
-  //   items: [
-  //     { title: 'PR Progression Charts', desc: 'Visual graphs to see your strength gains over time.', icon: 'chart.line.uptrend.xyaxes' },
-  //     { title: 'Profile Customization', desc: 'Personalize your profile and public PR board.', icon: 'person.crop.circle' },
-  //   ]
-  // },
   {
     status: 'Planned',
     color: '#888',
     items: [
-      { title: 'Global Community', desc: 'Chat and share routines with other lifters.', icon: 'person.2.fill' },
-      // { title: 'Nutrition Integration', desc: 'Quick calorie and macro logging for your bulk/cut.', icon: 'fork.knife' },
+      { title: 'PR Progression Charts', desc: 'Visual graphs to see your strength gains over time.', icon: 'chart.line.uptrend.xyaxes' },
+      { title: 'Profile Customization', desc: 'Personalize your profile and public PR board.', icon: 'person.crop.circle' },
     ]
   }
 ];
 
 export default function UpdatesPage() {
+  const openInstagram = () => {
+    Linking.openURL('https://instagram.com');
+  };
+
   return (
     <ThemedView style={styles.container}>
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
@@ -81,6 +71,18 @@ export default function UpdatesPage() {
           </ThemedText>
         </View>
 
+        {/* Instagram Link */}
+        <Pressable 
+          onPress={openInstagram} 
+          style={({ pressed }) => [
+            styles.socialLink,
+            { opacity: pressed ? 0.6 : 1 }
+          ]}
+        >
+          <ThemedText style={styles.socialText}>Follow for updates: </ThemedText>
+          <ThemedText style={styles.handleText}>@kevvey_kev</ThemedText>
+        </Pressable>
+
       </ScrollView>
     </ThemedView>
   );
@@ -88,7 +90,7 @@ export default function UpdatesPage() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#121212' },
-  scrollContent: { padding: 20, paddingTop: 40 },
+  scrollContent: { padding: 20, paddingTop: 40, paddingBottom: 60 },
   headerContainer: { alignItems: 'center', marginBottom: 40 },
   iconCircle: {
     width: 90, height: 90, borderRadius: 45,
@@ -115,4 +117,13 @@ const styles = StyleSheet.create({
     borderWidth: 1, borderColor: '#333',
   },
   missionText: { color: '#666', fontSize: 13, textAlign: 'center', fontStyle: 'italic' },
+  socialLink: {
+    marginTop: 30,
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingVertical: 15,
+  },
+  socialText: { color: '#777', fontSize: 14 },
+  handleText: { color: '#4CAF50', fontSize: 14, fontWeight: '700' },
 });

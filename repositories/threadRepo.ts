@@ -4,11 +4,7 @@ import {
   arrayRemove,
   arrayUnion,
   collection,
-  deleteDoc // Add this
-  ,
-
-
-
+  deleteDoc,
   doc,
   getDoc,
   increment,
@@ -26,19 +22,17 @@ export const createPost = async (text: string, userName: string) => {
     userName,
     createdAt: serverTimestamp(),
     likes: [],
-    commentCount: 0 // Initialize to 0
+    reportedBy: [], // Initialize reported list
+    reportCount: 0,
+    commentCount: 0
   });
 };
 
-// 🔥 ADD THIS FUNCTION
 export const deletePost = async (postId: string) => {
-  const user = auth.currentUser;
-  if (!user) return;
-
+  if (!auth.currentUser) return;
   try {
     const postRef = doc(db, 'posts', postId);
     await deleteDoc(postRef);
-    console.log("Post deleted successfully");
   } catch (error) {
     console.error("Error deleting post:", error);
     throw error;
@@ -54,10 +48,7 @@ export const toggleLike = async (postId: string, isLiked: boolean) => {
   });
 };
 
-export const addComment = async (postId: string, text: string, userName: string) => {
-  const uid = auth.currentUser?.uid;
-  if (!uid) return;
-
+export const addComment = async (postId: string, text: string, userName: string, uid: string) => {
   const commentsRef = collection(db, 'posts', postId, 'comments');
   await addDoc(commentsRef, {
     text,
@@ -72,34 +63,56 @@ export const addComment = async (postId: string, text: string, userName: string)
   });
 };
 
-export const reportPost = async (postId: string, postText: string, authorUid: string) => {
-  const reporterUid = auth.currentUser?.uid;
-  if (!reporterUid || !authorUid) return;
+export const reportPost = async (postId: string, reporterUid: string, reason: string) => {
+  try {
+    const postRef = doc(db, 'posts', postId);
+    const postSnap = await getDoc(postRef);
 
-  const postRef = doc(db, 'posts', postId);
-  const postSnap = await getDoc(postRef);
-  const postData = postSnap.data();
+    if (!postSnap.exists()) throw new Error("Post not found");
 
-  // Check if current user already reported this post
-  if (postData?.reportedBy?.includes(reporterUid)) {
-    throw new Error("ALREADY_REPORTED");
+    const postData = postSnap.data();
+    const authorUid = postData.uid;
+
+    // 1. Update the Post: Hide from reporter and increment count
+    await updateDoc(postRef, {
+      reportedBy: arrayUnion(reporterUid),
+      reportCount: increment(1),
+      lastReportReason: reason
+    });
+
+    // 2. Penalty Logic for the Author
+    const userRef = doc(db, 'users', authorUid); 
+    const userSnap = await getDoc(userRef);
+
+    if (userSnap.exists()) {
+      const userData = userSnap.data();
+      const currentPostReports = (postData.reportCount || 0) + 1;
+
+      // If this specific post hits 2 reports, trigger a ban
+      if (currentPostReports === 2) {
+        const softBanCount = (userData.softBanCount || 0) + 1;
+        
+        let banUntil: number;
+        
+        if (softBanCount >= 3) {
+          // PERMANENT BAN: Revoked forever (set to a date far in the future)
+          banUntil = 9999999999999; 
+        } else {
+          // SOFT BAN: 3 Days (3 days * 24h * 60m * 60s * 1000ms)
+          const THREE_DAYS_MS = 3 * 24 * 60 * 60 * 1000;
+          banUntil = Date.now() + THREE_DAYS_MS;
+        }
+
+        await updateDoc(userRef, {
+          banUntil: banUntil,
+          softBanCount: softBanCount,
+          isFlagged: true,
+          updatedAt: Date.now()
+        });
+      }
+    }
+  } catch (error) {
+    console.error("reportPost Repo Error:", error);
+    throw error;
   }
-
-  // 1. Log report & Update post
-  await updateDoc(postRef, {
-    reportCount: increment(1),
-    reportedBy: arrayUnion(reporterUid) // Track the reporter
-  });
-
-  // 2. Log to separate reports collection (optional but good for history)
-  await addDoc(collection(db, 'reports'), {
-    postId,
-    reportedBy: reporterUid,
-    createdAt: serverTimestamp(),
-  });
-
-  // 3. Ban Logic
-  const userRef = doc(db, 'users', authorUid);
-  const banUntil = Date.now() + (24 * 60 * 60 * 1000);
-  await updateDoc(userRef, { banUntil, isFlagged: true });
 };
